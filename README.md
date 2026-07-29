@@ -40,6 +40,20 @@ npm start
 open "http://localhost:3000/board?k=$BOARD_TOKEN"
 ```
 
+### Pairing a device
+
+Open `/board?k=<BOARD_TOKEN>` **once** on a device. The server sets a signed,
+httpOnly, one-year cookie, then redirects to the clean `/board` — the token
+leaves the address bar entirely.
+
+After that, **the bare URL works on that device**: point the TV at
+`https://your-app.up.railway.app/` and it lands on the board. No token to type,
+nothing sensitive readable off the screen.
+
+Devices without the cookie get a 404, same as a wrong token. `/logout` unpairs
+the current device; rotating `BOARD_TOKEN` unpairs **every** device, which is
+the way to revoke a screen you no longer control.
+
 ## Deploy to Railway
 
 ```bash
@@ -78,8 +92,11 @@ sudo systemctl enable --now wallboard-kiosk
 
 | Route | Purpose |
 |---|---|
-| `/board?k=TOKEN` | the display |
-| `/api/snapshot?k=TOKEN` | JSON the display renders |
+| `/board?k=TOKEN` | pairs the device, then redirects to `/board` |
+| `/board` | the display (paired devices only) |
+| `/` | paired → the board; otherwise → `/healthz` |
+| `/api/snapshot` | JSON the display renders (paired devices only) |
+| `/logout` | unpair this device |
 | `/healthz` | no token; 200 fresh, 503 stale |
 
 ## Where things live

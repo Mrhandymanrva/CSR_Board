@@ -3,7 +3,12 @@
 # Install:  sudo cp scripts/kiosk.sh /usr/local/bin/ && sudo chmod +x /usr/local/bin/kiosk.sh
 set -euo pipefail
 
-BOARD_URL="${BOARD_URL:?set BOARD_URL, e.g. https://wallboard.up.railway.app/board?k=TOKEN}"
+# No token needed here — pair this device once in the browser (see the unit
+# file) and the cookie persists across reboots.
+BOARD_URL="${BOARD_URL:?set BOARD_URL, e.g. https://wallboard.up.railway.app/board}"
+
+# The pairing cookie lives in the Chromium profile, so the profile must NOT be
+# wiped between launches. Do not add --incognito or --guest here.
 
 # Keep the panel awake. A call center TV that blanks after 10 minutes is useless.
 xset s off

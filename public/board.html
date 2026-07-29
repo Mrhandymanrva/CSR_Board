@@ -446,7 +446,10 @@ setInterval(()=>{s=(s+1)%60;$('hFresh').textContent='Live · updated '+s+'s ago'
    no ServiceTitan calls from the browser. If the poller dies the last
    good numbers stay on screen behind a stale banner. */
 
-const TOKEN = new URLSearchParams(location.search).get('k') || '';
+/* No token in here. The device is paired via an httpOnly cookie the server
+   set at setup, which the browser attaches to this same-origin fetch for us.
+   Nothing secret is reachable from page JavaScript, and nothing secret is
+   sitting in the address bar of a screen people walk past. */
 const REFRESH_MS = 30000;
 let lastGood = 0;
 
@@ -459,7 +462,7 @@ function setFresh(txt, warn){
 
 async function load(){
   try{
-    const res = await fetch('/api/snapshot?k=' + encodeURIComponent(TOKEN), {cache:'no-store'});
+    const res = await fetch('/api/snapshot', {cache:'no-store', credentials:'same-origin'});
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const snap = await res.json();
     if(!snap.ready){ setFresh('Waiting for first poll', true); return; }

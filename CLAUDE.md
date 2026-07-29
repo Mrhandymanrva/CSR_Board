@@ -29,6 +29,14 @@ ServiceTitan API ──(creds, server-side only)──▶ poller ──▶ in-me
 - **The browser never touches ServiceTitan.** No credentials reach the TV. It reads
   one JSON endpoint. This is not negotiable: the display hangs on a wall in a room
   people walk through.
+- **Access is pair-once, not token-in-URL.** Opening `/board?k=<BOARD_TOKEN>` sets a
+  signed httpOnly cookie and redirects to a clean `/board`; the bare domain then
+  works on that device forever. The original design required the 48-character token
+  in the URL on every load, which is unusable on a wall-mounted TV and left the
+  token visible in the address bar of a screen people walk past. The cookie is an
+  HMAC under `BOARD_TOKEN`, so rotating the token revokes every paired device.
+  `board.html` holds no token and reads the cookie only implicitly, via a
+  same-origin fetch — do not reintroduce a `k=` parameter in page JavaScript.
 - **Snapshot shape IS the render contract.** `snapshot()` in `src/poll/index.js`
   returns exactly the object `render()` in `board.html` consumes. Change one, change
   the other in the same commit.

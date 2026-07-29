@@ -9,7 +9,11 @@ Wants=network-online.target
 [Service]
 User=pi
 Environment=DISPLAY=:0
-Environment=BOARD_URL=https://CHANGE-ME.up.railway.app/board?k=CHANGE-ME
+# Bare URL — no token. Pair the device ONCE by opening
+#   https://YOUR-APP.up.railway.app/board?k=<BOARD_TOKEN>
+# in Chromium on this machine, then set the clean URL here. The cookie
+# survives reboots, so the kiosk never needs the token again.
+Environment=BOARD_URL=https://CHANGE-ME.up.railway.app/board
 ExecStart=/usr/local/bin/kiosk.sh
 Restart=always
 RestartSec=10
