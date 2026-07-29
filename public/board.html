@@ -1,0 +1,481 @@
+<meta charset="utf-8">
+<title>Mr. Handyman — Call Center Wallboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --canvas:#0E1113; --panel:#171B1F; --panel-2:#1E2429; --edge:#2A3238;
+    --ink:#F2F5F6; --ink-2:#93A0A8; --ink-3:#5F6D76;
+    --red:#C8102E; --red-hot:#F02D4A; --green:#2FC77E; --green-dp:#12603D; --amber:#F0A828;
+    --cond:'Barlow Condensed','Helvetica Neue Condensed','Arial Narrow',system-ui,sans-serif;
+    --body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#000;overflow:hidden;font-family:var(--body)}
+  #viewport{position:fixed;inset:0;display:grid;place-items:center}
+  #stage{width:1920px;height:1080px;transform-origin:center center;background:var(--canvas);
+    color:var(--ink);display:flex;flex-direction:column;position:relative;overflow:hidden}
+  #stage::before{content:'';position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(1200px 600px at 10% -10%,rgba(200,16,46,.10),transparent 60%)}
+
+  header{height:104px;flex:0 0 104px;display:flex;align-items:center;gap:28px;padding:0 36px;
+    border-bottom:1px solid var(--edge);position:relative;z-index:2;background:linear-gradient(180deg,#14181C,#0E1113)}
+  .mark{width:8px;height:56px;background:var(--red);border-radius:2px}
+  .brand{font-family:var(--cond);font-weight:700;font-size:42px;line-height:1;letter-spacing:.02em}
+  .brand em{font-style:normal;color:var(--red-hot)}
+  .brandsub{font-family:var(--cond);font-size:20px;color:var(--ink-2);letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
+  .hgap{margin-left:auto}
+  .live{display:flex;align-items:center;gap:12px;font-family:var(--cond);font-size:22px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+  .dot{width:12px;height:12px;border-radius:50%;background:var(--green);animation:pulse 2.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,199,126,.55)}70%{box-shadow:0 0 0 14px rgba(47,199,126,0)}100%{box-shadow:0 0 0 0 rgba(47,199,126,0)}}
+  .clock{font-family:var(--cond);font-weight:600;font-size:52px;line-height:1}
+  .datestamp{font-family:var(--cond);font-size:19px;color:var(--ink-2);letter-spacing:.1em;text-transform:uppercase;text-align:right}
+
+  .kpistrip{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;background:var(--edge);
+    border-bottom:1px solid var(--edge);flex:0 0 158px;position:relative;z-index:2}
+  .kpi{background:var(--panel);padding:18px 24px;position:relative;overflow:hidden}
+  .kpi .lbl{font-family:var(--cond);font-size:20px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+  .kpi .val{font-family:var(--cond);font-weight:700;font-size:66px;line-height:.95;margin-top:4px;font-variant-numeric:tabular-nums}
+  .kpi .sub{font-family:var(--cond);font-size:20px;color:var(--ink-3);letter-spacing:.05em;margin-top:5px}
+  .kpi.hero{background:linear-gradient(160deg,#24151A,#171B1F 60%)}
+  .kpi.hero::after{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--red)}
+  .up{color:var(--green)} .down{color:var(--red-hot)} .warn{color:var(--amber)}
+
+  main{flex:1;display:grid;grid-template-columns:1246px 1fr;gap:2px;background:var(--edge);
+    position:relative;z-index:2;min-height:0}
+  .col{display:flex;flex-direction:column;gap:2px;min-height:0}
+  .panel{background:var(--panel);padding:20px 26px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .ptitle{font-family:var(--cond);font-size:22px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ink-2);display:flex;align-items:center;gap:14px;flex:0 0 auto;white-space:nowrap}
+  .ptitle .rule{flex:1;height:1px;background:var(--edge);min-width:12px}
+  .ptitle .note{color:var(--ink-3);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* leaderboard */
+  /* name, in, out, avg call, phone-time bar, jobs, estimates. */
+  .grid6{display:grid;grid-template-columns:1fr 92px 92px 124px 244px 100px 120px;align-items:center;column-gap:8px}
+  .lbhead{font-family:var(--cond);font-size:18px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-3);padding:12px 0 8px;border-bottom:1px solid var(--edge)}
+  .lbhead div:nth-child(n+2){text-align:center}
+  .lbhead div:nth-child(5){text-align:left;padding-left:4px}
+  .lbrow{padding:0;border-bottom:1px solid rgba(42,50,56,.5);overflow:hidden}
+  #lbRows{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  #lbRows .lbrow{flex:1 1 0;min-height:0}
+  .lbrow:last-child{border-bottom:none}
+
+  /* roster density — every CSR stays on screen, no scroll */
+  .d1 .badge{width:46px;height:46px;font-size:22px}
+  .d1 .nm{font-size:31px} .d1 .status{font-size:16px;margin-top:2px}
+  .d1 .num{font-size:35px} .d1 .rank{font-size:29px} .d1 .pct{font-size:32px}
+  .d1 .estcell b{font-size:35px} .d1 .estcell span{font-size:17px}
+  .d1 .callcell b{font-size:35px} .d1 .callcell span{font-size:16px}
+  .d1 .track{height:21px}
+  .d2 .badge{width:38px;height:38px;font-size:18px;border-radius:5px}
+  .d2 .nm{font-size:26px} .d2 .status{display:none}
+  .d2 .num{font-size:29px} .d2 .rank{font-size:24px} .d2 .pct{font-size:27px}
+  .d2 .estcell b{font-size:29px} .d2 .estcell span{font-size:15px}
+  .d2 .callcell b{font-size:29px} .d2 .callcell span{font-size:14px}
+  .d2 .track{height:17px} .d2 .who{gap:12px}
+  .rank{font-family:var(--cond);font-weight:700;font-size:36px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .rank.lead{color:var(--red-hot)}
+  .who{display:flex;align-items:center;gap:16px}
+  .badge{width:54px;height:54px;border-radius:6px;display:grid;place-items:center;
+    font-family:var(--cond);font-weight:700;font-size:25px;background:var(--panel-2);border:1px solid var(--edge)}
+  .nm{font-family:var(--cond);font-weight:600;font-size:37px;line-height:1}
+  .status{font-family:var(--cond);font-size:18px;letter-spacing:.12em;text-transform:uppercase;
+    margin-top:4px;display:flex;align-items:center;gap:7px;color:var(--ink-3)}
+  .sdot{width:9px;height:9px;border-radius:50%;background:var(--ink-3)}
+  .s-oncall .sdot{background:var(--red-hot)} .s-oncall{color:#E9A0AC}
+  .s-avail .sdot{background:var(--green)} .s-avail{color:#8FD9B6}
+  .s-wrap .sdot{background:var(--amber)} .s-wrap{color:#E5C083}
+  .num{font-family:var(--cond);font-weight:600;font-size:42px;text-align:center;font-variant-numeric:tabular-nums}
+  .num.dim{color:var(--ink-2);font-weight:500}
+  .num.work{color:var(--green)}
+  .estcell{text-align:center;font-family:var(--cond);font-variant-numeric:tabular-nums}
+  .estcell b{font-weight:600;font-size:42px}
+  .estcell span{display:block;font-size:20px;letter-spacing:.06em;margin-top:-2px}
+  /* Calls + average call length, stacked. Sharing the Calls column keeps the
+     grid at seven tracks — an eighth would eat the CSR name. See CLAUDE.md. */
+  .callcell{text-align:center;font-family:var(--cond);font-variant-numeric:tabular-nums;color:var(--ink-2)}
+  .callcell b{font-weight:500;font-size:42px}
+  .callcell span{display:block;font-size:19px;letter-spacing:.04em;margin-top:-2px;color:var(--ink-3);white-space:nowrap}
+  .est-ok span{color:var(--ink-3)} .est-warn b,.est-warn span{color:var(--amber)}
+  .est-bad b,.est-bad span{color:var(--red-hot)}
+  .ratewrap{display:flex;align-items:center;gap:14px;padding-left:4px}
+  .track{flex:1;height:24px;background:#12171A;border:1px solid var(--edge);border-radius:3px;position:relative;overflow:hidden}
+  .fill{position:absolute;inset:1px auto 1px 1px;border-radius:2px;background:linear-gradient(90deg,#8E0B21,var(--red-hot))}
+  .fill.good{background:linear-gradient(90deg,#177451,var(--green))}
+  /* Workload, not performance — deliberately colourless. */
+  .fill.neutral{background:linear-gradient(90deg,#2F3A42,#55656F)}
+  .pct.dim{color:var(--ink-2);font-weight:600}
+  .goal{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);opacity:.7}
+  .pct{font-family:var(--cond);font-weight:700;font-size:38px;width:104px;text-align:right;font-variant-numeric:tabular-nums}
+
+  /* net book — signature panel */
+  .netpanel{flex:0 0 336px;position:relative;overflow:hidden}
+  .netpanel.neg{background:linear-gradient(150deg,#2A1319,var(--panel) 62%)}
+  .netpanel.pos{background:linear-gradient(150deg,#0F2A20,var(--panel) 62%)}
+  .netpanel.even{background:linear-gradient(150deg,#26210F,var(--panel) 62%)}
+  .netbig{display:flex;align-items:baseline;gap:18px;margin-top:8px}
+  .netnum{font-family:var(--cond);font-weight:700;font-size:118px;line-height:.8;font-variant-numeric:tabular-nums;transition:color .3s}
+  .netnum.bump{animation:bump .9s cubic-bezier(.2,.8,.3,1)}
+  @keyframes bump{0%{transform:scale(1)}22%{transform:scale(1.12)}100%{transform:scale(1)}}
+  .churn{font-family:var(--cond);font-size:20px;letter-spacing:.06em;color:var(--ink-3);
+    margin-top:2px;display:flex;align-items:center;gap:10px}
+  .churn b{font-weight:600}
+  .churn .pill{border:1px solid var(--edge);border-radius:3px;padding:2px 9px;background:#12171A}
+  .netlabel{font-family:var(--cond);font-size:30px;line-height:1.1;letter-spacing:.06em;text-transform:uppercase}
+  .netlabel small{display:block;font-size:21px;color:var(--ink-3);letter-spacing:.04em;margin-top:5px;text-transform:none}
+  .barline{margin-top:12px}
+  .barrow{display:grid;grid-template-columns:150px 1fr 74px;align-items:center;gap:14px;margin-bottom:7px}
+  .barrow .k{font-family:var(--cond);font-size:21px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-2)}
+  .barrow .b{height:26px;background:#12171A;border:1px solid var(--edge);border-radius:3px;overflow:hidden}
+  .barrow .b i{display:block;height:100%}
+  .barrow .n{font-family:var(--cond);font-weight:700;font-size:36px;text-align:right;font-variant-numeric:tabular-nums}
+  .netfoot{margin-top:auto;display:flex;align-items:center;gap:18px;border-top:1px solid var(--edge);padding-top:10px}
+  .netfoot .msg{font-family:var(--cond);font-size:25px;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sevenday{display:flex;gap:5px;align-items:flex-end;margin-left:6px}
+  .sd{width:26px;text-align:center}
+  .sdbar{height:26px;position:relative}
+  .sdbar i{position:absolute;left:5px;right:5px;border-radius:2px}
+  .sdlab{font-family:var(--cond);font-size:14px;color:var(--ink-3);letter-spacing:.02em;margin-top:1px}
+
+  /* BU table */
+  .butable{flex:1;display:flex;flex-direction:column;min-height:0}
+  .bugrid{display:grid;grid-template-columns:1fr 168px 84px;align-items:center;column-gap:10px}
+  .buhead{font-family:var(--cond);font-size:17px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+    padding:10px 0 6px;border-bottom:1px solid var(--edge);flex:0 0 auto;white-space:nowrap}
+  .buhead div:nth-child(n+2){text-align:center}
+  #buRows{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .burow{flex:1 1 0;min-height:0;overflow:hidden;border-bottom:1px solid rgba(42,50,56,.5)}
+  .burow:last-of-type{border-bottom:none}
+  .buname{font-family:var(--cond);font-size:31px;line-height:1;display:flex;align-items:center;gap:11px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .loc{font-family:var(--cond);font-size:15px;letter-spacing:.14em;color:var(--ink-3);flex:0 0 auto;
+    border:1px solid var(--edge);border-radius:3px;padding:2px 7px;background:#12171A}
+  .busplit{font-family:var(--cond);font-size:33px;text-align:center;font-variant-numeric:tabular-nums;
+    font-weight:600;white-space:nowrap}
+  .busplit i{font-style:normal;color:var(--ink-3);font-weight:400;margin:0 5px}
+  .busplit em{font-style:normal;color:var(--ink-2);font-weight:400}
+  .bunet{font-family:var(--cond);font-weight:700;font-size:35px;text-align:center;font-variant-numeric:tabular-nums}
+  .butotal{border-top:2px solid var(--edge);padding-top:9px;margin-top:auto;flex:0 0 auto}
+  .butotal .buname{font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:23px}
+
+  footer{height:76px;flex:0 0 76px;border-top:1px solid var(--edge);background:#12161A;
+    display:flex;align-items:center;overflow:hidden;position:relative;z-index:2}
+  .fchip{display:flex;align-items:center;gap:14px;padding:0 28px;height:100%;border-right:1px solid var(--edge);flex:0 0 auto}
+  .fchip .k{font-family:var(--cond);font-size:19px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+  .fchip .v{font-family:var(--cond);font-weight:600;font-size:34px;font-variant-numeric:tabular-nums}
+  .tickwrap{flex:1;overflow:hidden;position:relative;height:100%}
+  .tick{position:absolute;white-space:nowrap;top:50%;transform:translateY(-50%);font-family:var(--cond);
+    font-size:30px;letter-spacing:.04em;color:var(--ink-2);animation:scroll 40s linear infinite;padding-left:100%}
+  .tick b{color:var(--ink);font-weight:600}
+  .tick .sep{color:var(--red-hot);margin:0 26px}
+  @keyframes scroll{from{transform:translate(0,-50%)}to{transform:translate(-100%,-50%)}}
+
+  /* layout B */
+  main.B{grid-template-columns:1fr}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:2px;background:var(--edge);flex:1}
+  .card{background:var(--panel);padding:22px 26px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+  .card.top::after{content:'';position:absolute;left:0;right:0;top:0;height:4px;background:var(--red)}
+  .cardhead{display:flex;align-items:center;gap:16px}
+  .card .nm{font-size:42px}
+  .cardbig{font-family:var(--cond);font-weight:700;font-size:118px;line-height:.86;margin-top:8px;font-variant-numeric:tabular-nums}
+  .cardbig small{font-size:46px;color:var(--ink-3);font-weight:600}
+  .cardmeta{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:var(--edge);margin-top:auto}
+  .cm{background:var(--panel-2);padding:10px 12px}
+  .cm .lbl{font-family:var(--cond);font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+  .cm .v{font-family:var(--cond);font-weight:600;font-size:32px;line-height:1.05;font-variant-numeric:tabular-nums}
+  .hide{display:none!important}
+
+  #chrome{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);z-index:99;display:flex;gap:8px;
+    align-items:center;background:rgba(20,24,28,.92);border:1px solid #2A3238;border-radius:8px;padding:7px 10px;
+    font-family:var(--body);font-size:12.5px;color:#93A0A8;opacity:.5;transition:opacity .2s}
+  #chrome:hover{opacity:1}
+  #chrome button{font:inherit;font-weight:600;color:#93A0A8;background:#1E2429;border:1px solid #2A3238;
+    border-radius:5px;padding:6px 11px;cursor:pointer}
+  #chrome button.on{background:#C8102E;border-color:#C8102E;color:#fff}
+</style>
+
+<div id="viewport"><div id="stage">
+
+  <header>
+    <div class="mark"></div>
+    <div>
+      <div class="brand">MR. HANDYMAN <em>/ RICHMOND · HAMPTON–NEWPORT NEWS</em></div>
+      <div class="brandsub">Call center — booking performance, day to date</div>
+    </div>
+    <div class="hgap"></div>
+    <div class="live"><span class="dot"></span><span id="hFresh">Live · updated 8s ago</span></div>
+    <div style="text-align:right;margin-left:28px">
+      <div class="clock" id="hClock">2:47 PM</div>
+      <div class="datestamp" id="hDate">Wed · Jul 29</div>
+    </div>
+  </header>
+
+  <div class="kpistrip" id="kpis"></div>
+
+  <main class="A" id="mainA">
+    <div class="col">
+      <div class="panel" style="flex:1">
+        <div class="ptitle">CSR Activity <span class="rule"></span>
+          <span class="note">Volume and effort · calls both directions, any hour · no conversion rate</span></div>
+        <div class="grid6 lbhead">
+          <div>CSR</div><div>In</div><div>Out</div><div>Avg call</div><div>On the phone</div>
+          <div>Jobs</div><div>Estimates</div>
+        </div>
+        <div id="lbRows"></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="panel netpanel neg" id="netPanel">
+        <div class="ptitle">Booked vs. dispatched <span class="rule"></span>
+          <span class="note">Live board</span></div>
+        <div class="netbig">
+          <div class="netnum" id="netNum">−2</div>
+          <div class="netlabel" id="netLbl">Behind replacement
+            <small id="netSub">Excluding estimates: −13 · 29 work jobs booked</small></div>
+        </div>
+        <div class="barline">
+          <div class="barrow"><div class="k">On dispatch</div>
+            <div class="b"><i id="barRun" style="background:#3A444B"></i></div><div class="n" id="numRun">42</div></div>
+          <div class="barrow"><div class="k">Booked today</div>
+            <div class="b"><i id="barBook"></i></div><div class="n" id="numBook">40</div></div>
+          <div class="churn" id="churn"></div>
+        </div>
+        <div class="netfoot">
+          <div class="msg" id="netMsg"></div>
+        </div>
+      </div>
+
+      <div class="panel butable">
+        <div class="ptitle">Jobs by business unit <span class="rule"></span>
+          <span class="note">Booked vs. on today's board</span></div>
+        <div class="bugrid buhead">
+          <div>Business unit</div><div>Booked / board</div><div>Net</div>
+        </div>
+        <div id="buRows"></div>
+        <div class="bugrid butotal" id="buTotal"></div>
+      </div>
+    </div>
+  </main>
+
+  <main class="B hide" id="mainB"><div class="cards" id="cards"></div></main>
+
+  <footer>
+    <div class="fchip"><span class="k">Work booked value</span><span class="v" id="fRev">$15.1k</span></div>
+    <div class="fchip"><span class="k">Jobs to even</span><span class="v down" id="fEven">2</span></div>
+    <div class="fchip"><span class="k">7-day net</span><span class="v down" id="f7">−9</span>
+      <div class="sevenday" id="sevenday"></div></div>
+    <div class="tickwrap"><div class="tick" id="tick"></div></div>
+  </footer>
+
+</div></div>
+
+
+<script>
+const stage=document.getElementById('stage');
+function fit(){stage.style.transform='scale('+Math.min(innerWidth/1920,innerHeight/1080)+')'}
+addEventListener('resize',fit);fit();
+
+let D = null;
+
+const $=id=>document.getElementById(id);
+const pct=(a,b)=>b?a/b*100:0;
+const sgn=v=>(v>0?'+':v<0?'−':'')+Math.abs(v);
+let lastNet=null;
+
+function render(){
+  if(!D) return;
+  /* CALLS and JOBS are different measures and are never mixed. The booking
+     rate is calls-to-calls (Booked / Booked+Unbooked); `booked` below counts
+     jobs created and carries no rate of its own. See domain/rules.js. */
+  const callsOk=D.callsOk && D.callsHandled!=null;
+  const calls=callsOk?D.callsHandled:'\u2014';
+  const booked=D.csrs.reduce((s,c)=>s+c.booked,0);
+  const est=D.csrs.reduce((s,c)=>s+c.est,0);
+  const work=booked-est;
+  const disp=D.bus.reduce((s,b)=>s+b.disp,0);
+  const net=booked-disp, netWork=work-disp;
+  const estShare=pct(est,booked);
+  const rec=D.recovery;
+  const reached=D.reachedCallers??0, missed=D.missedCallers??0;
+  const reachPct=pct(reached,reached+missed);
+
+  /* KPIs */
+  $('kpis').innerHTML=[
+    {l:'Calls in hours',v:calls,
+      s:callsOk?'Avg call '+D.avgCall+' · '+D.afterHours+' after hours':'Telecom unavailable'},
+    {l:'Reached a person',v:callsOk&&(reached+missed)?reachPct.toFixed(0)+'%':'—',
+      s:reached+' of '+(reached+missed)+' callers · counted once each'},
+    /* Hero. Missed calls are NOT lost — they hand off to text-back and a human
+       follows up, and 1 in 5 books within a week. Trailing by necessity: the
+       median recovery lag is ~2 days, so today's misses cannot be scored today. */
+    {l:'Missed → booked',v:rec&&rec.pct!=null?rec.pct.toFixed(0)+'%':'—',hero:1,
+      s:rec&&rec.pct!=null
+        ?rec.recovered+' of '+rec.scored+' missed callers booked within '+rec.days+' days'
+        :'Recovery still loading'},
+    {l:'Missed today',v:callsOk?missed:'—',
+      s:'Handed to text-back'+(rec&&rec.pending?' · '+rec.pending+' still in the window':''),
+      warn:missed>0},
+    {l:'Jobs booked',v:booked,s:'<span class="warn">'+est+' estimate'+(est===1?'':'s')+'</span> · '+work+' work jobs'},
+    {l:'Estimate share',v:estShare.toFixed(0)+'%',s:est+' of '+booked+' jobs entered today'}
+  ].map(k=>`<div class="kpi ${k.hero?'hero':''}"><div class="lbl">${k.l}</div>
+      <div class="val${k.warn?' warn':''}">${k.v}</div><div class="sub">${k.s}</div></div>`).join('');
+
+  /* CSR activity — density scales so every CSR fits without scrolling.
+     Order comes from the server and is ALPHABETICAL, deliberately: sorting by
+     any metric is a ranking, and a stable order lets someone find their own
+     line from across the room. Do not re-sort here. */
+  const ranked=D.csrs;
+  const rows=$('lbRows');
+  rows.className = ranked.length>9 ? 'd2' : ranked.length>6 ? 'd1' : '';
+  /* Phone time comes from the server and counts BOTH directions. Deriving it
+     from avg x inbound made the outbound-heavy CSRs read as idle. */
+  const mins=c=>Math.round((c.phoneSecs??0)/60);
+  const maxMins=Math.max(1,...ranked.map(mins));
+  rows.innerHTML=ranked.map(c=>{
+    /* The bar is time on the phone against the busiest person today. It is a
+       workload picture, not a score — no target marker, no pass/fail colour. */
+    const m=mins(c), w=m?Math.max(m/maxMins*100,2):0;
+    return `<div class="grid6 lbrow">
+      <div class="who"><div class="badge">${c.i}</div>
+        <div><div class="nm">${c.n}</div><div class="status s-${c.st}"><span class="sdot"></span>${c.stl}</div></div></div>
+      <div class="num">${c.calls}</div>
+      <div class="num dim">${c.out}</div>
+      <div class="num dim">${c.avg}</div>
+      <div class="ratewrap">
+        <div class="track"><div class="fill neutral" style="width:calc(${w}% - 2px)"></div></div>
+        <div class="pct dim">${m?m+'m':'—'}</div>
+      </div>
+      <div class="num work">${c.booked}</div>
+      <div class="num dim">${c.est}</div></div>`;
+  }).join('');
+
+  /* Net book panel */
+  const state = net<0 ? 'neg' : net>0 ? 'pos' : 'even';
+  const stateColor = state==='neg' ? 'var(--red-hot)' : state==='pos' ? 'var(--green)' : 'var(--amber)';
+  $('netPanel').className='panel netpanel '+state;
+  const nn=$('netNum'); nn.textContent=sgn(net)||'0'; nn.style.color=stateColor;
+  $('netLbl').firstChild.textContent =
+    state==='neg' ? 'Behind replacement' : state==='pos' ? 'Ahead of replacement' : 'Even with the board';
+  $('netSub').textContent='Excluding estimates: '+sgn(netWork)+' · '+work+' work jobs booked';
+  const mx=Math.max(booked,disp);
+  $('barRun').style.width=(disp/mx*100)+'%';
+  const bb=$('barBook'); bb.style.width=(booked/mx*100)+'%';
+  bb.style.background = state==='neg' ? 'linear-gradient(90deg,#8E0B21,var(--red-hot))'
+                      : state==='pos' ? 'linear-gradient(90deg,#177451,var(--green))'
+                      : 'linear-gradient(90deg,#8A6014,var(--amber))';
+  $('numRun').textContent=disp; $('numBook').textContent=booked;
+  $('netMsg').innerHTML =
+    state==='neg' ? `<b style="color:var(--red-hot)">Book ${Math.abs(net)} more</b> to hold even today.`
+  : state==='pos' ? `<b style="color:var(--green)">${net} ahead</b> — forward book is growing.`
+  :                 `<b style="color:var(--amber)">Holding even</b> — the next booking puts us ahead.`;
+
+  const ch=D.churn;
+  $('churn').innerHTML=`<span class="pill">Board live</span>
+    Opened at <b style="color:var(--ink-2)">${ch.open}</b> ·
+    <b class="up">+${ch.added} added</b> ·
+    <b class="down">−${ch.cancelled} cancelled</b> since ${ch.since}`;
+
+  if(net!==lastNet){ nn.classList.remove('bump'); void nn.offsetWidth; nn.classList.add('bump'); }
+  lastNet=net;
+
+  $('sevenday').innerHTML=D.week.map(w=>{
+    const n=w.b-w.r, h=Math.max(Math.min(Math.abs(n)*2.6,11),n===0?1:3);
+    return `<div class="sd"><div class="sdbar">
+      <i style="top:12px;height:1px;background:var(--edge);left:0;right:0"></i>
+      <i style="${n>=0?'bottom:15px':'top:14px'};height:${h}px;background:${n>=0?'var(--green)':'var(--red-hot)'}"></i>
+      </div><div class="sdlab">${w.d}</div></div>`;
+  }).join('');
+
+  /* BU table */
+  $('buRows').innerHTML=D.bus.map(b=>{
+    const n=b.booked-b.disp;
+    return `<div class="bugrid burow">
+      <div class="buname"><span class="loc">${b.loc}</span>${b.n}</div>
+      <div class="busplit">${b.booked}<i>/</i><em>${b.disp}</em></div>
+      <div class="bunet" style="color:${n<0?'var(--red-hot)':n>0?'var(--green)':'var(--ink-3)'}">${sgn(n)||'0'}</div>
+    </div>`;
+  }).join('');
+  $('buTotal').innerHTML=`<div class="buname">All units</div>
+    <div class="busplit">${booked}<i>/</i><em>${disp}</em></div>
+    <div class="bunet" style="color:${stateColor}">${sgn(net)||'0'}</div>`;
+
+  /* footer */
+  $('fRev').textContent='$'+(work*D.avgTicket/1000).toFixed(1)+'k';
+  const fe=$('fEven'); fe.textContent=net<0?Math.abs(net):0;
+  fe.className='v '+(net<0?'down':net>0?'up':'warn');
+  const wk=D.week.reduce((s,w)=>s+w.b-w.r,0);
+  const f7=$('f7'); f7.textContent=sgn(wk); f7.className='v '+(wk<0?'down':'up');
+  $('tick').innerHTML=D.ticker;
+
+  /* layout B cards */
+  /* Card layout mirrors the table: calls answered is the big number, no rate
+     and no "top" highlight — there is nothing here to come first at. */
+  $('cards').innerHTML=ranked.map(c=>{
+    const m=mins(c);
+    return `<div class="card">
+      <div class="cardhead"><div class="badge">${c.i}</div>
+        <div><div class="nm">${c.n}</div><div class="status s-${c.st}"><span class="sdot"></span>${c.stl}</div></div></div>
+      <div class="cardbig">${c.calls+c.out}<small> calls</small></div>
+      <div class="track" style="margin-top:12px"><div class="fill neutral"
+        style="width:calc(${m?Math.max(m/maxMins*100,2):0}% - 2px)"></div></div>
+      <div class="cardmeta">
+        <div class="cm"><div class="lbl">In / out</div><div class="v">${c.calls}/${c.out}</div></div>
+        <div class="cm"><div class="lbl">On phone</div><div class="v">${m?m+'m':'—'}</div></div>
+        <div class="cm"><div class="lbl">Jobs</div><div class="v">${c.booked}</div></div>
+        <div class="cm"><div class="lbl">Est.</div><div class="v" style="color:var(--ink-2)">${c.est}</div></div>
+      </div></div>`;
+  }).join('');
+}
+
+let s=8;
+setInterval(()=>{s=(s+1)%60;$('hFresh').textContent='Live · updated '+s+'s ago';
+  const n=new Date();
+  $('hClock').textContent=n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  $('hDate').textContent=n.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}).replace(',',' ·');
+},1000);
+
+
+/* ── live data ─────────────────────────────────────────────────────
+   The board reads ONE endpoint and renders it. No credentials here,
+   no ServiceTitan calls from the browser. If the poller dies the last
+   good numbers stay on screen behind a stale banner. */
+
+const TOKEN = new URLSearchParams(location.search).get('k') || '';
+const REFRESH_MS = 30000;
+let lastGood = 0;
+
+function setFresh(txt, warn){
+  const el = $('hFresh');
+  el.textContent = txt;
+  el.style.color = warn ? 'var(--amber)' : '';
+  document.querySelector('.dot').style.background = warn ? 'var(--amber)' : 'var(--green)';
+}
+
+async function load(){
+  try{
+    const res = await fetch('/api/snapshot?k=' + encodeURIComponent(TOKEN), {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const snap = await res.json();
+    if(!snap.ready){ setFresh('Waiting for first poll', true); return; }
+    D = snap;
+    lastGood = Date.now();
+    render();
+    setFresh(snap.stale ? 'Stale \u2014 ServiceTitan not responding' : 'Live', !!snap.stale);
+  }catch(e){
+    const mins = lastGood ? Math.round((Date.now()-lastGood)/60000) : null;
+    setFresh(mins==null ? 'Connecting\u2026' : 'Stale \u2014 ' + mins + ' min old', true);
+  }
+}
+
+load();
+setInterval(load, REFRESH_MS);
+
+/* Reload nightly so a long-running kiosk never drifts. */
+setInterval(() => { if (new Date().getHours() === 4) location.reload(); }, 3600000);
+</script>

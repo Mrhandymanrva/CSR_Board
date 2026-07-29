@@ -1,0 +1,18 @@
+# Autostart the kiosk on boot.
+#   sudo cp scripts/wallboard-kiosk.service /etc/systemd/system/
+#   sudo systemctl enable --now wallboard-kiosk
+[Unit]
+Description=Call center wallboard kiosk
+After=graphical.target network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+Environment=DISPLAY=:0
+Environment=BOARD_URL=https://CHANGE-ME.up.railway.app/board?k=CHANGE-ME
+ExecStart=/usr/local/bin/kiosk.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=graphical.target
