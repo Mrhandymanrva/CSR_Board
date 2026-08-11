@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mr. Handyman — Technician Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --canvas:#0E1113; --panel:#171B1F; --panel-2:#1E2429; --edge:#2A3238;
+    --ink:#F2F5F6; --ink-2:#93A0A8; --ink-3:#5F6D76;
+    --red:#C8102E; --red-hot:#F02D4A; --green:#2FC77E; --amber:#F0A828;
+    /* The most important token on this board: work that is real but produces no
+       invoice. Deliberately cool and calm — not red, not green, not a failure. */
+    --steel:#6E93B8; --steel-dp:#2B3B4A;
+    --cond:'Barlow Condensed','Bahnschrift Condensed','Bahnschrift','Arial Narrow','Helvetica Neue Condensed',system-ui,sans-serif;
+    --body:'Barlow','Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#000;overflow:hidden;font-family:var(--body)}
+  /* The stage is a fixed 1920x1080 canvas scaled to whatever screen it lands on.
+     Do NOT centre it with place-items:center — a grid refuses to centre an item
+     larger than its track, so below 1920x1080 the board silently shifts off by
+     half the overflow. Position is computed explicitly in fit(). */
+  #viewport{position:fixed;inset:0;overflow:hidden;background:#000}
+  #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;
+    background:var(--canvas);color:var(--ink);display:flex;flex-direction:column;overflow:hidden}
+  #stage::before{content:'';position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(1200px 600px at 10% -10%,rgba(200,16,46,.10),transparent 60%)}
+
+  /* ── header ───────────────────────────────────────────── */
+  header{height:88px;flex:0 0 88px;display:flex;align-items:center;gap:26px;padding:0 30px;
+    border-bottom:1px solid var(--edge);position:relative;z-index:2;
+    background:linear-gradient(180deg,#14181C,#0E1113)}
+  .mark{width:8px;height:52px;background:var(--red);border-radius:2px}
+  .brand{font-family:var(--cond);font-weight:700;font-size:38px;line-height:1;letter-spacing:.02em}
+  .brand em{font-style:normal;color:var(--red-hot)}
+  .brandsub{font-family:var(--cond);font-size:18px;color:var(--ink-2);letter-spacing:.14em;
+    text-transform:uppercase;margin-top:3px}
+  .hgap{margin-left:auto}
+  .live{display:flex;align-items:center;gap:11px;font-family:var(--cond);font-size:20px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--green);animation:pulse 2.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,199,126,.55)}70%{box-shadow:0 0 0 13px rgba(47,199,126,0)}100%{box-shadow:0 0 0 0 rgba(47,199,126,0)}}
+  .clock{font-family:var(--cond);font-weight:600;font-size:48px;line-height:1;font-variant-numeric:tabular-nums}
+  .datestamp{font-family:var(--cond);font-size:17px;color:var(--ink-2);letter-spacing:.1em;
+    text-transform:uppercase;text-align:right}
+  .daynav{display:flex;align-items:center;gap:9px;margin-left:20px}
+  .daynav button{font-family:var(--cond);font-size:27px;line-height:1;font-weight:600;color:var(--ink-2);
+    background:var(--panel-2);border:1px solid var(--edge);border-radius:6px;width:42px;height:48px;cursor:pointer;
+    transition:background .15s,color .15s}
+  .daynav button:hover:not(:disabled){background:#2A3238;color:var(--ink)}
+  .daynav button.thisweek{width:auto;padding:0 14px;font-size:19px;letter-spacing:.1em;text-transform:uppercase}
+  .daynav button.thisweek.on{background:var(--red);border-color:var(--red);color:#fff}
+  .daynav button:disabled{opacity:.28;cursor:default}
+  .daynav button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  /* Viewing a finished week: the header goes amber and the live dot stops, so a
+     week that is over can never be mistaken for the one in progress. */
+  .past .datestamp{color:var(--amber)}
+  .past .dot{animation:none;background:var(--amber)}
+  .stale .dot{animation:none;background:var(--amber)}
+
+  /* ── KPI strip ────────────────────────────────────────── */
+  .kpistrip{display:grid;grid-template-columns:1.55fr 1fr 1fr 1fr 1fr 1.2fr;gap:2px;background:var(--edge);
+    border-bottom:1px solid var(--edge);flex:0 0 140px;position:relative;z-index:2}
+  .kpi{background:var(--panel);padding:13px 22px;position:relative;overflow:hidden;display:flex;flex-direction:column}
+  .kpi .lbl{font-family:var(--cond);font-size:18px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+  .kpi .val{font-family:var(--cond);font-weight:700;font-size:56px;line-height:.95;margin-top:3px;font-variant-numeric:tabular-nums}
+  .kpi .sub{font-family:var(--cond);font-size:18px;color:var(--ink-3);letter-spacing:.05em;margin-top:auto}
+  .kpi.hero{background:linear-gradient(160deg,#24151A,#171B1F 60%)}
+  .kpi.hero::after{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--red)}
+  .kpi.hero .val{font-size:64px}
+  .crewbar{height:9px;background:#12171A;border:1px solid var(--edge);border-radius:3px;position:relative;
+    overflow:hidden;margin-top:6px;margin-bottom:5px}
+  .crewbar i{position:absolute;inset:1px auto 1px 1px;border-radius:2px;
+    background:linear-gradient(90deg,#8E0B21,var(--red-hot))}
+  .steelc{color:var(--steel)}
+
+  /* ── the matrix ───────────────────────────────────────── */
+  main{flex:1;display:flex;flex-direction:column;background:var(--panel);
+    padding:11px 30px 6px;position:relative;z-index:2;min-height:0}
+  .mhead{display:flex;align-items:baseline;gap:12px;flex:0 0 auto;padding-bottom:7px}
+  .ptitle{font-family:var(--cond);font-size:20px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-2);white-space:nowrap}
+  .pnote{font-family:var(--cond);font-size:17px;letter-spacing:.04em;color:var(--ink-3)}
+  .pnote b{color:var(--steel);font-weight:600}
+  .lg{display:inline-flex;align-items:center;gap:6px;margin-left:9px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block;background:var(--panel-2);border:1px solid var(--edge)}
+  .sw.bu1{border-color:#3E5364;background:rgba(110,147,184,.30)}
+
+  .row{display:grid;
+    grid-template-columns:244px 208px repeat(6,172px) 168px 84px;
+    align-items:center;column-gap:9px}
+  .thead{font-family:var(--cond);font-size:16px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+    padding-bottom:6px;border-bottom:1px solid var(--edge);flex:0 0 auto}
+  .thead>div{text-align:center}
+  .thead>div:first-child{text-align:left}
+  .thead .tot{text-align:right}
+  .thead .dcol{border-left:1px solid rgba(42,50,56,.55)}
+  .thead .we{color:#414D55}
+  .thead .now{color:var(--ink);background:rgba(200,16,46,.16);border-radius:3px 3px 0 0;padding:2px 0 4px}
+  #rows{flex:1;display:flex;flex-direction:column;min-height:0}
+  .trow{flex:1 1 0;min-height:0;border-bottom:1px solid rgba(42,50,56,.45)}
+  .trow:last-child{border-bottom:none}
+  .trow.nonrev{background:linear-gradient(90deg,rgba(110,147,184,.07),transparent 55%)}
+
+  .who{display:flex;align-items:center;gap:12px;min-width:0}
+  .badge{width:30px;height:30px;flex:0 0 30px;border-radius:5px;display:grid;place-items:center;
+    font-family:var(--cond);font-weight:700;font-size:15px;background:var(--panel-2);
+    border:1px solid var(--edge);color:var(--ink-3)}
+  .badge.bu1{border-color:#3E5364;background:rgba(110,147,184,.13);color:var(--steel)}
+  .nm{font-family:var(--cond);font-weight:600;font-size:26px;line-height:1;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+
+  .goalwrap{display:flex;align-items:center;gap:9px}
+  .track{flex:1;height:15px;background:#12171A;border:1px solid var(--edge);border-radius:3px;position:relative;overflow:hidden}
+  /* Below goal is neutral steel, never red. A tech mid-morning is not failing. */
+  .fill{position:absolute;inset:1px auto 1px 1px;border-radius:2px;background:linear-gradient(90deg,#2F3A42,#55656F)}
+  .fill.over{background:linear-gradient(90deg,#177451,#5BE8A8);box-shadow:0 0 12px rgba(47,199,126,.40)}
+  .gpct{font-family:var(--cond);font-weight:700;font-size:22px;width:54px;text-align:right;line-height:1;
+    font-variant-numeric:tabular-nums;color:var(--ink-2)}
+  .gpct.on{color:var(--green)}
+  .tag{display:block;font-family:var(--cond);font-size:15px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--steel);border:1px solid var(--steel-dp);background:rgba(110,147,184,.10);
+    border-radius:4px;padding:3px 8px;white-space:nowrap;text-align:center;width:100%;line-height:1.15}
+
+  /* Every day cell carries both of the Liveboard's columns — dollars and job
+     count — so the grid stays at one track per day instead of twelve. They sit
+     SIDE BY SIDE: a row is only ~37px tall but a day column is 172px wide, so
+     the count rides next to the money rather than being crushed under it. */
+  .dcell{border-left:1px solid rgba(42,50,56,.55);height:100%;display:flex;flex-direction:row;
+    align-items:baseline;justify-content:center;gap:7px;font-family:var(--cond);font-variant-numeric:tabular-nums}
+  .dcell b{font-weight:600;font-size:25px;line-height:1;color:var(--ink-2)}
+  .dcell span{font-size:16px;line-height:1;color:var(--ink-3);letter-spacing:.02em}
+  .dcell.none b{color:#3A444B}
+  .dcell.we{background:rgba(0,0,0,.22)}
+  .dcell.we b{color:#38424A}
+  .dcell.now{background:rgba(200,16,46,.10);box-shadow:inset 3px 0 0 var(--red)}
+  .dcell.now b{font-size:29px;color:var(--ink);font-weight:700}
+  .dcell.now span{color:var(--ink-2)}
+  .dcell.nc b{color:var(--steel);font-size:18px;font-weight:600}
+  .dcell.nc span{display:none}
+  .dcell.best b{color:var(--ink)}
+
+  .totcell{font-family:var(--cond);font-variant-numeric:tabular-nums;display:flex;
+    flex-direction:row;align-items:baseline;justify-content:flex-end;gap:7px}
+  .totcell b{font-weight:700;font-size:27px;line-height:1}
+  .totcell span{font-size:16px;line-height:1;color:var(--ink-3);letter-spacing:.02em}
+  .totcell.zero b{color:var(--steel);font-size:18px;letter-spacing:.03em}
+  .rc{font-family:var(--cond);font-weight:600;font-size:23px;text-align:center;
+    font-variant-numeric:tabular-nums;color:var(--ink-3)}
+  .rc.hit{color:var(--red-hot)}
+
+  .totrow{flex:0 0 40px;border-top:1px solid var(--edge);border-bottom:none;background:rgba(0,0,0,.25)}
+  .totrow .lbl{font-family:var(--cond);font-size:18px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
+  .totrow .dcell b{font-size:21px;color:var(--ink-2)}
+  .totrow .dcell.now b{font-size:24px;color:var(--ink)}
+  .totrow .totcell b{font-size:25px}
+
+  /* ── footer ───────────────────────────────────────────── */
+  footer{height:52px;flex:0 0 52px;display:flex;align-items:center;gap:16px;padding:0 30px;
+    border-top:1px solid var(--edge);background:#12161A;position:relative;z-index:2;
+    font-family:var(--cond);font-size:20px;color:var(--ink-2);letter-spacing:.03em}
+  footer b{color:var(--ink);font-weight:600}
+  .sep{color:var(--ink-3);margin:0 10px}
+  .integrity{margin-left:auto;display:flex;align-items:center;gap:9px;font-size:17px;
+    letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+  .integrity .ok{width:8px;height:8px;border-radius:50%;background:var(--green)}
+  .integrity.bad{color:var(--amber)} .integrity.bad .ok{background:var(--amber)}
+  @media (prefers-reduced-motion:reduce){.dot{animation:none}}
+</style>
+</head>
+<body>
+<div id="viewport">
+<div id="stage">
+
+  <header id="hdr">
+    <div class="mark"></div>
+    <div>
+      <div class="brand">MR. <em>HANDYMAN</em></div>
+      <div class="brandsub" id="sub">Technician Board</div>
+    </div>
+    <div class="hgap"></div>
+    <div class="live"><span class="dot"></span><span id="livetext">Live</span></div>
+    <div class="daynav">
+      <button type="button" id="prev" aria-label="Previous week">‹</button>
+      <button type="button" id="cur" class="thisweek on">This week</button>
+      <button type="button" id="next" aria-label="Next week" disabled>›</button>
+    </div>
+    <div style="min-width:190px;text-align:right">
+      <div class="clock" id="clock">—</div>
+      <div class="datestamp" id="stamp"></div>
+    </div>
+  </header>
+
+  <div class="kpistrip" id="kpis"></div>
+
+  <main>
+    <div class="mhead">
+      <div class="ptitle">Invoiced revenue · day by day</div>
+      <div class="pnote" id="note"></div>
+    </div>
+    <div class="row thead" id="thead"></div>
+    <div id="rows"></div>
+    <div class="row totrow" id="totrow"></div>
+  </main>
+
+  <footer>
+    <span id="ticker">Waiting for today’s first invoice.</span>
+    <div class="integrity" id="integrity"></div>
+  </footer>
+
+</div>
+</div>
+
+<script>
+/* ── Render contract ───────────────────────────────────────────────
+   This file consumes exactly what snapshot() in src/techs/poll.js returns.
+   Change one, change the other in the SAME commit. */
+
+const usd = (n) => '$' + Math.round(n).toLocaleString();
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let week = 0;            // 0 = this week, -1 = last week
+let maxBack = 8;
+let lastTouch = Date.now();
+
+/* Business units are tinted, not named, on each row — the badge has 30px.
+   Assigned by sorted BU id so a franchise with different units still gets
+   two distinguishable tints without anything hardcoded. */
+let buOrder = [];
+const buClass = (id) => (buOrder.indexOf(id) === 1 ? ' bu1' : '');
+
+function render(s) {
+  if (!s || !s.ready) return;
+
+  buOrder = Object.keys(s.buNames || {}).map(Number).sort((a, b) => a - b);
+
+  const hdr = document.getElementById('hdr');
+  hdr.classList.toggle('past', !s.isThisWeek);
+  hdr.classList.toggle('stale', Boolean(s.stale));
+
+  document.getElementById('sub').textContent =
+    'Technician Board · ' + (Object.values(s.buNames || {}).join(' + ') || 'All units');
+  document.getElementById('livetext').textContent =
+    !s.isThisWeek ? 'Historical · ' + s.weekLabel
+      : s.stale ? 'Stale · last update ' + s.asOf
+      : 'Live · updated ' + s.asOf;
+  document.getElementById('stamp').textContent = s.weekLabel;
+
+  /* A ticking clock above a finished week is the single most misleading thing
+     this board could show, so history replaces it with how far back you are. */
+  document.getElementById('clock').textContent = s.isThisWeek
+    ? new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : (s.week === -1 ? 'Last week' : `${-s.week} weeks ago`);
+
+  document.getElementById('cur').classList.toggle('on', s.isThisWeek);
+  document.getElementById('next').disabled = s.week >= 0;
+  document.getElementById('prev').disabled = s.week <= -maxBack;
+  maxBack = s.maxLookbackWeeks ?? maxBack;
+
+  const k = s.kpi;
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi hero">
+      <div class="lbl">${s.isThisWeek ? 'Invoiced today' : 'Week invoiced'}</div>
+      <div class="val">${usd(s.isThisWeek ? k.todayRevenue : k.weekRevenue)}</div>
+      ${s.isThisWeek && k.crewPct != null
+        ? `<div class="crewbar"><i style="width:${Math.min(k.crewPct, 100)}%"></i></div>
+           <div class="sub">${k.crewPct}% of the ${usd(k.crewGoal)} crew goal · ${k.todayJobs} job${k.todayJobs === 1 ? '' : 's'} closed</div>`
+        : `<div class="sub">${k.weekJobs} jobs</div>`}
+    </div>
+    <div class="kpi">
+      <div class="lbl">Week to date</div>
+      <div class="val">${usd(k.weekRevenue)}</div>
+      <div class="sub">${k.weekJobs} jobs · Mon–Sat</div>
+    </div>
+    <div class="kpi">
+      <div class="lbl">Avg ticket</div>
+      <div class="val">${k.avgTicket != null ? usd(k.avgTicket) : '—'}</div>
+      <div class="sub">${k.revenueJobs} billable job${k.revenueJobs === 1 ? '' : 's'}</div>
+    </div>
+    <div class="kpi">
+      <div class="lbl">Techs invoicing</div>
+      <div class="val">${k.techsInvoicing}<span style="font-size:30px;color:var(--ink-3)"> / ${k.techsOnBoard}</span></div>
+      <div class="sub">${k.estimateVisits ? k.estimateVisits + ' on estimate visits' : 'on the board this week'}</div>
+    </div>
+    <div class="kpi">
+      <div class="lbl">Estimate visits</div>
+      <div class="val steelc">${k.estimateVisits}</div>
+      <div class="sub">revenue lands on the follow-up</div>
+    </div>
+    <div class="kpi">
+      <div class="lbl">Callbacks</div>
+      <div class="val${k.callbacks ? '' : ''}">${k.callbacks}</div>
+      <div class="sub">${k.callbacks ? 'this week' : 'none this week'}</div>
+    </div>`;
+
+  const legend = buOrder.map((id, i) =>
+    `<span class="lg"><i class="sw${i === 1 ? ' bu1' : ''}"></i>${esc(s.buNames[id])}</span>`).join('');
+  document.getElementById('note').innerHTML =
+    `Credited on the day the job was completed · split evenly when two techs work one job · ${legend} · ` +
+    `<b>steel = estimate &amp; no-charge visits: real work, no invoice</b>`;
+
+  document.getElementById('thead').innerHTML =
+    `<div>Technician</div><div>${s.isThisWeek ? 'Today vs daily goal' : 'Daily goal'}</div>` +
+    s.columns.map((c) =>
+      `<div class="dcol${c.isToday ? ' now' : ''}${c.isSaturday ? ' we' : ''}">${esc(c.label)}</div>`).join('') +
+    `<div class="tot">Week · &times;jobs</div><div>Recalls</div>`;
+
+  document.getElementById('rows').innerHTML = s.rows.map((r) => {
+    const best = Math.max(...r.cells.map((c) => c?.revenue ?? 0));
+
+    const goalCell = r.todayNonRevenue
+      ? `<div><span class="tag">${esc(r.todayLabel || 'no invoice')}</span></div>`
+      : r.pct == null
+        ? `<div class="gpct">—</div>`
+        : `<div class="goalwrap">
+             <div class="track"><div class="fill${r.pct >= 100 ? ' over' : ''}" style="width:${Math.min(r.pct, 100)}%"></div></div>
+             <div class="gpct${r.pct >= 100 ? ' on' : ''}">${r.pct}%</div>
+           </div>`;
+
+    const cells = s.columns.map((col, i) => {
+      const c = r.cells[i];
+      const cls = (col.isToday ? ' now' : '') + (col.isSaturday ? ' we' : '');
+      if (!c || (c.revenue === 0 && c.jobs === 0)) return `<div class="dcell${cls} none"><b>—</b></div>`;
+      if (c.nonRevenue) return `<div class="dcell${cls} nc"><b>${c.jobs} visit${c.jobs > 1 ? 's' : ''}</b></div>`;
+      return `<div class="dcell${cls}${c.revenue === best && best > 0 ? ' best' : ''}">
+                <b>${usd(c.revenue)}</b><span>&times;${c.jobs}</span></div>`;
+    }).join('');
+
+    return `<div class="row trow${r.todayNonRevenue ? ' nonrev' : ''}">
+      <div class="who">
+        <div class="badge${buClass(r.bu)}" title="${esc(s.buNames?.[r.bu] ?? '')}">${esc(r.i)}</div>
+        <div class="nm">${esc(r.n)}</div>
+      </div>
+      ${goalCell}
+      ${cells}
+      <div class="totcell${r.weekRevenue ? '' : ' zero'}">
+        <b>${r.weekRevenue ? usd(r.weekRevenue) : 'no invoice'}</b><span>&times;${r.weekJobs}</span></div>
+      <div class="rc${r.callbacks ? ' hit' : ''}">${r.callbacks || '—'}</div>
+    </div>`;
+  }).join('');
+
+  const t = s.totals;
+  document.getElementById('totrow').innerHTML =
+    `<div class="lbl">All technicians</div>` +
+    (s.isThisWeek && k.crewPct != null
+      ? `<div class="goalwrap"><div class="track"><div class="fill" style="width:${Math.min(k.crewPct, 100)}%"></div></div><div class="gpct">${k.crewPct}%</div></div>`
+      : `<div class="gpct">—</div>`) +
+    s.columns.map((col, i) => {
+      const d = t.perDay[i];
+      const cls = (col.isToday ? ' now' : '') + (col.isSaturday ? ' we' : '');
+      if (!d || (d.revenue === 0 && d.jobs === 0)) return `<div class="dcell${cls} none"><b>—</b></div>`;
+      return `<div class="dcell${cls}"><b>${usd(d.revenue)}</b><span>&times;${d.jobs}</span></div>`;
+    }).join('') +
+    `<div class="totcell"><b>${usd(t.weekRevenue)}</b><span>&times;${t.weekJobs}</span></div>
+     <div class="rc">${k.callbacks || '—'}</div>`;
+
+  document.getElementById('ticker').innerHTML = ticker(s);
+
+  const ig = document.getElementById('integrity');
+  ig.classList.toggle('bad', s.integrity.unattributed > 0);
+  ig.innerHTML = `<span class="ok"></span>` + (s.integrity.unattributed > 0
+    ? `${s.integrity.unattributed} job${s.integrity.unattributed === 1 ? '' : 's'} (${usd(s.integrity.unattributedRevenue)}) not matched to a technician`
+    : `${s.integrity.matched} of ${s.integrity.matched} jobs matched to a technician · 0 unattributed`);
+}
+
+/* Ticker lines are generated from the current numbers, never hand-written, so
+   the board is always saying something true. */
+function ticker(s) {
+  const bits = [];
+  const past = s.rows.filter((r) => r.pct != null && r.pct >= 100).sort((a, b) => b.pct - a.pct);
+  if (past.length) bits.push(`<b>${esc(past[0].n)}</b> is past goal today at <b>${past[0].pct}%</b>`);
+
+  const wk = [...s.rows].sort((a, b) => b.weekRevenue - a.weekRevenue)[0];
+  if (wk?.weekRevenue > 0) bits.push(`<b>${esc(wk.n)}</b> leads the week at <b>${usd(wk.weekRevenue)}</b>`);
+
+  const est = s.rows.filter((r) => r.todayNonRevenue);
+  if (est.length) {
+    const n = est.reduce((a, r) => a + r.todayJobs, 0);
+    bits.push(`<b>${n} estimate &amp; no-charge visit${n === 1 ? '' : 's'}</b> today — that revenue lands later`);
+  }
+  if (s.kpi.callbacks > 0) bits.push(`<b>${s.kpi.callbacks} callback${s.kpi.callbacks === 1 ? '' : 's'}</b> this week`);
+
+  return bits.join(' <span class="sep">◆</span> ') || 'Waiting for today’s first invoice.';
+}
+
+async function load() {
+  try {
+    const res = await fetch(`/api/tech-snapshot?week=${week}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    render(await res.json());
+  } catch (e) {
+    console.error('[techboard] load failed', e);
+    document.getElementById('livetext').textContent = 'Reconnecting…';
+  }
+}
+
+function go(w) {
+  week = Math.min(0, Math.max(-maxBack, w));
+  lastTouch = Date.now();
+  load();
+}
+document.getElementById('prev').onclick = () => go(week - 1);
+document.getElementById('next').onclick = () => go(week + 1);
+document.getElementById('cur').onclick = () => go(0);
+addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft') go(week - 1);
+  else if (e.key === 'ArrowRight') go(week + 1);
+  else if (e.key === 'Home') go(0);
+});
+addEventListener('click', () => { lastTouch = Date.now(); });
+
+/* Somebody checks last week, walks away, and the TV is left showing finished
+   numbers until a person notices. Snap back to the live week after 10 minutes
+   idle. Any click or keypress resets the timer. */
+setInterval(() => {
+  if (week !== 0 && Date.now() - lastTouch > 600_000) go(0);
+}, 30_000);
+
+setInterval(load, 90_000);
+setInterval(() => {
+  const el = document.getElementById('clock');
+  if (week === 0) el.textContent = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}, 10_000);
+
+function fit() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  const x = (innerWidth - 1920 * s) / 2;
+  const y = (innerHeight - 1080 * s) / 2;
+  document.getElementById('stage').style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+}
+addEventListener('resize', fit);
+fit();
+load();
+</script>
+</body>
+</html>

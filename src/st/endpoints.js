@@ -36,6 +36,39 @@ export const EP = {
   // CONFIRMED against tenant 412939912: telecom/v2/tenant/{id}/calls answers
   // and paginates. (A v3 surface exists; v2 carries everything the board needs.)
   calls: { module: 'telecom', path: 'calls' },
+
+  // ── Technician board ────────────────────────────────────────────
+  // CONFIRMED live 2026-08-11. See TECHNICIAN BOARD note below before
+  // changing any of these or the parameters that go with them.
+  technicians: { module: 'settings', path: 'technicians' },
+  appointmentAssignments: { module: 'dispatch', path: 'appointment-assignments' },
+};
+
+/**
+ * TECHNICIAN BOARD — what is reachable, and what is not.
+ *
+ * ⚠️ `accounting/v2/tenant/{id}/invoices` returns 403 "Scope validation failed".
+ * So does `payroll/v2/tenant/{id}/gross-pay-items`. The ServiceTitan app these
+ * credentials belong to has NO Accounting and NO Payroll scope, so invoice
+ * records — and therefore invoice-level technician splits — are unavailable.
+ * Adding them means adding the scope in the Developer Portal and re-consenting
+ * in the tenant; it is not a code change. Until then:
+ *
+ *   money       jpm/jobs → `total`      (reconciled to the cent vs the Liveboard)
+ *   day         jpm/jobs → `completedOn`
+ *   technician  dispatch/appointment-assignments?jobId={id} → `technicianId`
+ *   goal        settings/technicians → `dailyGoal`  (real, 1100-1300)
+ *
+ * Useful fields on a job record beyond `total`: `noCharge`, `recallForId`
+ * (callbacks), `jobTypeId`, `invoiceId`, `completedOn`. `soldById` is NOT
+ * usable — populated on 3 of 222 jobs.
+ */
+export const JOB = {
+  revenue: (j) => Number(j?.total) || 0,
+  completedAt: (j) => {
+    const t = Date.parse(j?.completedOn ?? '');
+    return Number.isFinite(t) ? t : null;
+  },
 };
 
 /**
@@ -125,6 +158,44 @@ export const PARAM = {
     createdOnOrAfter: 'createdOnOrAfter',
     createdBefore: 'createdBefore',
   },
+
+  /* Jobs COMPLETED in a window → the technician board's revenue day.
+     Verified honoured: 222 rows against 79,630 unfiltered. */
+  jobsCompleted: {
+    completedOnOrAfter: 'completedOnOrAfter',
+    completedBefore: 'completedBefore',
+  },
+
+  /* Assignments for ONE job. Singular `jobId` only — see the ignored list. */
+  assignments: {
+    jobId: 'jobId',
+  },
+};
+
+/**
+ * PARAMETERS THAT ARE SILENTLY IGNORED — verified live, keep this list.
+ *
+ * ServiceTitan does not 400 on a parameter it does not recognise; it returns
+ * the UNFILTERED set. Every name below was sent, came back with the full row
+ * count, and would have produced a board that looked plausible and was wrong.
+ * This is not hypothetical — the first version of this board's technician join
+ * used `appointmentIds` on a v2 endpoint that ignores it, pulled 800 unrelated
+ * rows, and reported $0 for every technician.
+ *
+ *   appointment-assignments : `appointmentId` (singular), `technicianId`
+ *   appointments            : `jobIds` (csv)
+ *
+ * HONOURED on appointment-assignments: `jobId` (singular), `appointmentIds`
+ * (csv), `ids` (csv), `createdOnOrAfter`.
+ *
+ * If you add a filter, prove it narrows before you trust it — send a
+ * deliberately bogus parameter alongside as a control, and pass
+ * `includeTotal=true` or `totalCount` comes back null and the check silently
+ * passes on every row.
+ */
+export const IGNORED_PARAMS = {
+  appointmentAssignments: ['appointmentId', 'technicianId'],
+  appointments: ['jobIds'],
 };
 
 /**
