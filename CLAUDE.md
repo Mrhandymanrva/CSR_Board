@@ -4,12 +4,17 @@ Context for whoever (human or agent) picks this repo up. Read before changing an
 
 ## What this is
 
-A TV wallboard for the Mr. Handyman call center (Richmond + Hampton–Newport News,
-single ServiceTitan tenant). It answers one question for the CSRs, continuously:
+A TV wallboard for a home-services call center, driven by one ServiceTitan tenant.
+It answers one question for the CSRs, continuously:
 
 > **Are we booking work faster than we're running it?**
 
 Everything else on the board supports that question.
+
+**Nothing in this repo is market-specific.** Branding, business hours and
+business-unit tags all come from env — see `.env.example`. If you are adding a
+franchise, `docs/SHARING.md` is the checklist; `docs/RICHMOND-FINDINGS.md` is the
+originating tenant's private analysis and does not ship.
 
 ## Architecture
 
@@ -116,46 +121,33 @@ measured on, so change them there and nowhere else.
 | Average call length | Mean `leadCall.duration` over ANSWERED inbound calls | Not "talk time" — the field includes pre-answer time. See below |
 | Net = 0 | **"Even" — amber, third state** | Zero is not ahead. Do not collapse `netState()` to a boolean |
 
-## What replaced booking rate
+## The measurement stance — and why you must re-derive it
 
-**Decided with Mason, 2026-07-29. Do not put a per-call conversion percentage back
-on this board without re-reading this section.**
+This board deliberately shows **no per-call booking rate** and **no conversion
+target**, and ranks nobody. That was not a style choice; it was measured. The full
+derivation, with the numbers, lives in `docs/RICHMOND-FINDINGS.md`.
 
-Mr. Handyman is not dispatch-first. A CSR call is often intake — gathering what an
-estimate needs — and the booking lands days later, if it lands on that call at all.
-A first-call-close rate measures an HVAC business. Three findings from the tenant's
-own 14–28 day history, not from opinion:
+The short version, and the part that generalises:
 
-**1. The call funnel explains a fifth of the work.** Of 398 live jobs created in 14
-days, **75 (19%) carry a `leadCallId`**. 24 more came from online booking. The other
-~300 arrive from repeat customers, callbacks and follow-up with no call attached. Any
-per-call rate is blind to 81% of what gets booked.
+- **A call-based booking rate could only see 19% of booked jobs here.** Most work
+  arrived from repeat customers, callbacks and follow-up with no call attached.
+- **ServiceTitan's `Booked` means booked *during* the call** — every job-to-call lag
+  measured under an hour. It is structurally a first-call-close rate.
+- **Intake converts late.** Missed and unbooked callers came back days later. A
+  same-day rate scores correct behaviour as failure.
+- So CSRs are measured on **volume and effort**, and conversion is measured at the
+  **customer level over a trailing window**, where delayed booking is visible.
 
-**2. ServiceTitan's `Booked` means booked DURING the call.** All 75 job-to-call lags
-were under an hour — not one over. There is no field recording "this call led to a
-booking on Thursday", so the metric can only ever be a first-call-close rate.
+**If you are deploying this for a different franchise, re-run the analysis before
+trusting any of it.** A more dispatch-first operation may genuinely close on the
+call, in which case a booking rate is a fair measure there. The transferable part is
+the method, not the conclusion:
 
-**3. Intake works, and the old rate scored it as failure.** Booked within 7 days,
-matched per customer:
-
-| Cohort | Books later | Median lag |
-|---|---|---|
-| Missed, in hours | 22% | 2.1 d |
-| Missed, after hours | 17% | 0.8 d |
-| Unbooked (answered) | 26% | 1.0 d |
-| NotLead (answered) | 32% | 2.0 d |
-| **Booked (control)** | **3%** | — |
-
-The Booked cohort at 3% is the control: it proves the signal is real follow-up
-conversion and not repeat-customer background noise. Without it the other rows mean
-nothing — keep it in any future version of this analysis.
-
-**What the board shows instead:**
-- **Missed → booked** (hero): of missed in-hours callers, the share with a job booked
-  inside `RECOVERY_WINDOW_DAYS`. Trailing and per customer.
-- **Reached a person**: deduped callers who got through, in hours.
-- **CSR activity**: calls, average call length, time on the phone, jobs, estimates.
-  No rate, no rank, no target, alphabetical.
+1. Check what share of your booked jobs are attributable to a call at all.
+2. Measure conversion at the customer level over 7–14 days, not per call.
+3. **Always include a control cohort.** Callers who already booked re-book at ~3%;
+   without that baseline, "X% convert later" proves nothing.
+4. Scope every call metric to business hours before believing an abandon rate.
 
 ## Viewing another day
 
@@ -190,44 +182,19 @@ notice and try to make them consistent. Don't.
 | **Demand** — KPI strip: calls in hours, reached a person, missed | Inbound, in business hours | Measures how reachable we were and who we missed. Out-of-hours calls are not a service failure — nobody is there |
 | **Effort** — CSR activity panel: in, out, avg call, phone time | Every call a person handled, both directions, any hour | Measures what a person actually did. If they were on the phone at 16:05 that is still work |
 
-Counting inbound only in the activity panel was a real defect, caught 2026-07-29:
-AmyW ran **117 outbound against 5 inbound** over 14 days and rendered as `0 calls`,
-as did anyone else doing follow-up. Outbound is the human half of the text-back loop
-that produces the 22% recovery number — showing it as idleness contradicts the
-metric right next to it. `phoneSecs` on a CSR row sums BOTH directions; do not
-re-derive phone time from `avgSecs × calls`, which is where the bug came from.
+Counting inbound only in the activity panel was a real defect: a CSR running 117
+outbound against 5 inbound over 14 days rendered as `0 calls`, as did anyone else
+doing follow-up. Outbound is the human half of the text-back loop that produces the
+recovery number — showing it as idleness contradicts the metric beside it.
+`phoneSecs` on a CSR row sums BOTH directions; do not re-derive phone time from
+`avgSecs × calls`, which is where the bug came from.
 
 Outbound is effort only. It never enters a rate, a denominator, or a score.
 
-**CarliH showing zero is usually correct.** She takes ~0.8 inbound calls a day and
-mostly enters jobs (77 in 28 days). Before assuming an attribution bug, check the
-raw calls — `leadCall.agent.id` does equal the employee `id` for every CSR. The
-`agentId` field on the employee record is **0 for all 102 employees** and is not the
-join key; it looks like one and is not.
-
-**Open question worth chasing:** NotLead calls book later at 32% — the highest of any
-cohort. Either they are being over-applied, or existing customers call about one thing
-and book another. Until that is understood, treat any disposition-derived number with
-suspicion; 55% of answered calls are dispositioned NotLead or Excused.
-
-## Opportunities — superseded, kept for context
-
-This was written up as the weak spot, with a plan to hand-fill
-`OPPORTUNITY_CALL_REASON_IDS` from the tenant's own call reasons. That turned out to
-be unnecessary. Telecom records here carry ServiceTitan's own per-call classification
-— `Booked` / `Unbooked` / `Abandoned` / `NotLead` / `Excused` — and it is effectively
-complete (525 of 526 calls across three days). `OPPORTUNITY_CALL_REASON_IDS` is now
-unused; `reason.lead` covers only 16 of 61 calls and is not a substitute.
-
-This section recorded an intermediate step: booking rate was first fixed from
-jobs-created ÷ opportunity-calls (which read 75% where the honest number was 25%,
-because jobs arrive from sources the call denominator never saw) to a clean
-calls-to-calls ratio. That version was correct arithmetic and still the wrong
-question — see § What replaced booking rate. `CALL_TYPE` remains the right way to
-read a call outcome; only the rate built on it is gone.
-
-**If telecom data is unavailable, the board shows a dash.** That rule outlives the
-metric: never fabricate a denominator on a wall-mounted display.
+**A CSR showing zero calls is often correct.** Some enter jobs and rarely answer the
+phone. Before assuming an attribution bug, check the raw calls — `leadCall.agent.id`
+does equal the employee `id`. The `agentId` field on the employee record is **0 for
+every employee** and is not the join key; it looks like one and is not.
 
 ## Not available from ServiceTitan
 

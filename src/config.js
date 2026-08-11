@@ -24,6 +24,26 @@ export const cfg = {
   boardToken: req('BOARD_TOKEN'),
   tz: process.env.TZ || 'America/New_York',
   port: int('PORT', 3000),
+
+  /* ── Branding ────────────────────────────────────────────────────
+     Everything market-specific lives here so another franchise can deploy
+     this unchanged. Nothing below should ever be hardcoded in board.html
+     or rules.js again. */
+  brand: {
+    name: process.env.BRAND_NAME || 'Call Center',
+    market: process.env.MARKET_LABEL || '',
+    subtitle: process.env.BOARD_SUBTITLE || 'Call center — booking performance, day to date',
+    /* Maps a ServiceTitan business-unit name to the short tag shown on the
+       board, as `match=TAG` pairs. BU names are long ("Richmond - Level 1
+       Service") and the column has ~500px, so the location is split out.
+         BU_LOCATION_TAGS=richmond=RIC,hampton=NN,newport=NN
+       Leave empty and the tag column simply stays blank. */
+    locationTags: (process.env.BU_LOCATION_TAGS || '')
+      .split(',')
+      .map((pair) => pair.split('='))
+      .filter((p) => p.length === 2 && p[0].trim() && p[1].trim())
+      .map(([match, tag]) => ({ match: match.trim().toLowerCase(), tag: tag.trim() })),
+  },
   poll: {
     today: int('POLL_TODAY_MS', 60_000),
     refs: int('POLL_REFS_MS', 3_600_000),

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Mr. Handyman call center wallboard — ServiceTitan poller + kiosk display",
+  "description": "Call center wallboard — ServiceTitan poller + kiosk display",
   "engines": { "node": ">=20.0.0" },
   "scripts": {
     "start": "node src/server.js",

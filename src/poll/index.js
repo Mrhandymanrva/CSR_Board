@@ -340,6 +340,9 @@ export function snapshot(day = state.today, offsetDays = 0) {
     // No `target` and no `estCap`. There is no conversion target on this board
     // and no estimate-share cap — see rules.js on why both were removed.
     avgTicket: cfg.rules.avgTicket,
+    brand: cfg.brand.name,
+    market: cfg.brand.market,
+    subtitle: cfg.brand.subtitle,
 
     callsHandled: calls.handled,
     outbound: calls.outbound,

@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>Mr. Handyman — Call Center Wallboard</title>
+<title>Call Center Wallboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -220,8 +220,10 @@
   <header>
     <div class="mark"></div>
     <div>
-      <div class="brand">MR. HANDYMAN <em>/ RICHMOND · HAMPTON–NEWPORT NEWS</em></div>
-      <div class="brandsub">Call center — booking performance, day to date</div>
+      <!-- Filled from BRAND_NAME / MARKET_LABEL / BOARD_SUBTITLE at render.
+           Nothing market-specific belongs in this file. -->
+      <div class="brand" id="hBrand">&nbsp;</div>
+      <div class="brandsub" id="hSub">&nbsp;</div>
     </div>
     <div class="hgap"></div>
     <div class="live"><span class="dot"></span><span id="hFresh">Live · updated 8s ago</span></div>
@@ -311,6 +313,13 @@ let lastNet=null;
 
 function render(){
   if(!D) return;
+
+  /* Branding comes from the server so one build serves any franchise. */
+  const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  $('hBrand').innerHTML=esc(D.brand)+(D.market?' <em>/ '+esc(D.market)+'</em>':'');
+  $('hSub').textContent=D.subtitle||'';
+  const title=D.brand+(D.market?' — '+D.market:'')+' · Wallboard';
+  if(document.title!==title) document.title=title;
   /* CALLS and JOBS are different measures and are never mixed. The booking
      rate is calls-to-calls (Booked / Booked+Unbooked); `booked` below counts
      jobs created and carries no rate of its own. See domain/rules.js. */

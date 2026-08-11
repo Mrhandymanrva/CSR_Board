@@ -271,21 +271,29 @@ export function buildBuRows(bookedJobs, dispatchJobs, businessUnits) {
 }
 
 /* ── Naming helpers ───────────────────────────────────────────────
-   ServiceTitan BU names are long ("Richmond - Level 1 Service"). The
-   board has ~500px for this column, so we split a location tag out and
-   keep the rest short. Adjust the patterns to your actual BU naming. */
+   ServiceTitan BU names are long ("Richmond - Level 1 Service") and the
+   board has ~500px for the column, so the location is split into a short
+   tag and the rest is trimmed.
+
+   Driven entirely by BU_LOCATION_TAGS so another franchise can deploy this
+   without touching code. These used to be hardcoded Richmond/Hampton
+   regexes, which is exactly the kind of thing that makes a tool
+   un-shareable. With no config the tag is blank and the full name shows. */
 
 function locTag(buName) {
-  if (/newport|hampton|nn\b/i.test(buName)) return 'NN';
-  if (/richmond|rva|ric\b/i.test(buName)) return 'RIC';
-  return '';
+  const name = String(buName).toLowerCase();
+  return cfg.brand.locationTags.find((t) => name.includes(t.match))?.tag ?? '';
 }
 
 function shortBuName(buName) {
-  return buName
-    .replace(/^\s*(richmond|newport news|hampton[^-]*)\s*[-–—:]\s*/i, '')
-    .replace(/\s*[-–—]\s*/g, ' — ')
-    .trim();
+  let out = String(buName);
+  // Drop a leading location prefix ("Richmond - Level 1" → "Level 1"), but
+  // only when it is one we are already showing as a tag.
+  for (const { match } of cfg.brand.locationTags) {
+    const re = new RegExp(`^\\s*${match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^-–—:]*[-–—:]\\s*`, 'i');
+    if (re.test(out)) { out = out.replace(re, ''); break; }
+  }
+  return out.replace(/\s*[-–—]\s*/g, ' — ').trim();
 }
 
 function initials(name) {
