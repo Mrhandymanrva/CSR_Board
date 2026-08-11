@@ -92,6 +92,14 @@ export function localDayWindow(offsetDays = 0) {
   };
 }
 
+/** Full date label for the header, e.g. "Wed · Jul 29". */
+export function localDateLabel(offsetDays = 0) {
+  const d = localDayStart(offsetDays);
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: cfg.tz, weekday: 'short', month: 'short', day: 'numeric',
+  }).format(d).replace(',', ' ·');
+}
+
 /** Short weekday label in local tz, e.g. "Mon" / "Today" for offset 0. */
 export function dayLabel(offsetDays) {
   if (offsetDays === 0) return 'Today';

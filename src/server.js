@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { cfg } from './config.js';
-import { start, snapshot, _state } from './poll/index.js';
+import { start, snapshot, getDay, clampDay, _state } from './poll/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -95,9 +95,18 @@ app.get('/healthz', (_req, res) => {
   });
 });
 
-app.get('/api/snapshot', gateApi, (_req, res) => {
+/* `?day=-1` is yesterday, `-2` the day before, clamped at MAX_LOOKBACK_DAYS.
+   Today comes from the live poller; anything else is fetched on demand and
+   cached, so paging back is one API round trip and then free. */
+app.get('/api/snapshot', gateApi, async (req, res) => {
+  const day = clampDay(req.query.day);
   res.set('Cache-Control', 'no-store');
-  res.json(snapshot());
+  try {
+    res.json(snapshot(await getDay(day), day));
+  } catch (e) {
+    console.error('[api] day', day, 'failed:', e.message);
+    res.status(502).json({ ready: false, day, error: `Could not load that day: ${e.message}` });
+  }
 });
 
 app.get('/board', gatePage, (_req, res) => {

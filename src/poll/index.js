@@ -1,4 +1,4 @@
-import { cfg, localDayWindow, localDayStart, dayLabel, localTimeLabel } from '../config.js';
+import { cfg, localDayWindow, localDayStart, dayLabel, localTimeLabel, localDateLabel } from '../config.js';
 import { stGetAll } from '../st/client.js';
 import { EP, PARAM, CALL } from '../st/endpoints.js';
 import * as R from '../domain/rules.js';
@@ -61,8 +61,8 @@ async function jobsScheduledOn(offsetDays) {
    Telecom provisioning varies. If this endpoint fails the board still
    renders: calls/opportunities show as unavailable and booking rate
    shows a dash. A missing denominator must never be faked. */
-async function pollCalls() {
-  const w = localDayWindow(0);
+async function pollCalls(offsetDays = 0) {
+  const w = localDayWindow(offsetDays);
   const P = PARAM.calls;
   try {
     const raw = await stGetAll(EP.calls.module, EP.calls.path, {
@@ -217,12 +217,55 @@ export async function pollWeek() {
   state.week = out;
 }
 
+/* ── Any other day, on demand ─────────────────────────────────────
+   The board is a live display, so only today is polled on a timer. Any other
+   day is fetched when somebody asks for it, then cached — a finished day does
+   not change, so the cache can be generous and the TV never pays for a second
+   look at yesterday. */
+const dayCache = new Map();          // offsetDays -> { at, day }
+const DAY_TTL_MS = 15 * 60_000;
+export const MAX_LOOKBACK_DAYS = 30;
+
+export function clampDay(raw) {
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(0, Math.max(-MAX_LOOKBACK_DAYS, n));
+}
+
+async function fetchDay(offsetDays) {
+  const [created, scheduled, calls] = await Promise.all([
+    jobsCreatedOn(offsetDays),
+    jobsScheduledOn(offsetDays),
+    pollCalls(offsetDays),
+  ]);
+  return {
+    booked: R.bookedToday(created),
+    dispatch: scheduled.filter(R.onTodaysBoard),
+    calls,
+    /* Churn is a LIVE measure: it compares the board now against the first
+       poll of today. A finished day has no equivalent — the "opened at"
+       figure was never recorded for it — so it is omitted rather than
+       reconstructed from end-of-day totals, which would look identical and
+       mean something else entirely. */
+    churn: null,
+  };
+}
+
+export async function getDay(offsetDays) {
+  if (offsetDays === 0) return state.today;
+  const hit = dayCache.get(offsetDays);
+  if (hit && Date.now() - hit.at < DAY_TTL_MS) return hit.day;
+  const day = await fetchDay(offsetDays);
+  dayCache.set(offsetDays, { at: Date.now(), day });
+  return day;
+}
+
 /* ── Today (every 60s) ────────────────────────────────────────────── */
 export async function pollToday() {
   const [created, scheduled, calls] = await Promise.all([
     jobsCreatedOn(0),
     jobsScheduledOn(0),
-    pollCalls(),
+    pollCalls(0),
   ]);
 
   const booked = R.bookedToday(created);
@@ -257,11 +300,14 @@ export async function pollToday() {
   state.lastError = null;
 }
 
-/* ── Snapshot: the contract the browser renders ───────────────────── */
-export function snapshot() {
-  if (!state.today) return { ready: false, generatedAt: new Date().toISOString() };
+/* ── Snapshot: the contract the browser renders ─────────────────────
+   Defaults to today so /healthz and the existing callers are unchanged.
+   Pass a day from getDay() plus its offset to render history. */
+export function snapshot(day = state.today, offsetDays = 0) {
+  if (!day) return { ready: false, generatedAt: new Date().toISOString() };
 
-  const { booked, dispatch, calls, churn } = state.today;
+  const { booked, dispatch, calls, churn } = day;
+  const isToday = offsetDays === 0;
   const csrs = R.buildCsrRows(booked, {
     employees: state.refs.employees,
     opportunitiesByEmployee: calls.oppsBy,
@@ -280,8 +326,16 @@ export function snapshot() {
     ready: true,
     generatedAt: new Date().toISOString(),
     asOf: localTimeLabel(),
-    stale: Date.now() - state.lastOk > cfg.poll.today * 3,
-    error: state.lastError,
+
+    /* Which day this is. `stale` means "the live poller has stopped" and can
+       only ever apply to today — a finished day is not stale, it is done, and
+       flagging it amber would train people to ignore a warning that matters. */
+    day: offsetDays,
+    isToday,
+    dateLabel: localDateLabel(offsetDays),
+    maxLookback: MAX_LOOKBACK_DAYS,
+    stale: isToday ? Date.now() - state.lastOk > cfg.poll.today * 3 : false,
+    error: isToday ? state.lastError : null,
 
     // No `target` and no `estCap`. There is no conversion target on this board
     // and no estimate-share cap — see rules.js on why both were removed.
@@ -331,7 +385,7 @@ function buildTicker({ csrs, bus, week, churn, calls, recovery }) {
   const worst = bus.filter((b) => b.booked - b.disp < 0).sort((a, b) => (a.booked - a.disp) - (b.booked - b.disp))[0];
   if (worst) bits.push(`<b>${worst.n} ${worst.loc}</b> is ${Math.abs(worst.booked - worst.disp)} short of replacing today's board`);
 
-  if (churn.cancelled > 0) {
+  if (churn?.cancelled > 0) {
     bits.push(`<b>${churn.cancelled} cancellation${churn.cancelled > 1 ? 's' : ''}</b> off today's board — that work has to be re-booked to hold even`);
   }
 

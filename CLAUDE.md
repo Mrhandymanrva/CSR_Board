@@ -110,6 +110,8 @@ measured on, so change them there and nowhere else.
 | Missed calls | "Missed", never "lost" — they go to Nonstop.ai text-back | 1 in 5 books within a week. Calling them lost is factually wrong |
 | Missed → booked | Per CUSTOMER, over a trailing 7 days, settled calls only | Median recovery lag is 2.1 days, so today's misses cannot be scored today |
 | Business hours | Mon–Fri 08:00–15:59, configurable. Calls outside are counted, never scored | 97% of out-of-hours calls go unanswered because the office is shut |
+| Viewing a past day | Allowed, up to 30 days back. Header turns amber, clock is replaced by "Yesterday" / "N days ago" | A finished day must never be mistakable for the live board |
+| Churn on a past day | **Omitted, not reconstructed** | "Opened at N" was never recorded for a finished day; an end-of-day total would look identical and mean something else |
 | Caller counting | One caller per day, not one call | 36% of missed calls are the same person retrying |
 | Average call length | Mean `leadCall.duration` over ANSWERED inbound calls | Not "talk time" — the field includes pre-answer time. See below |
 | Net = 0 | **"Even" — amber, third state** | Zero is not ahead. Do not collapse `netState()` to a boolean |
@@ -154,6 +156,29 @@ nothing — keep it in any future version of this analysis.
 - **Reached a person**: deduped callers who got through, in hours.
 - **CSR activity**: calls, average call length, time on the phone, jobs, estimates.
   No rate, no rank, no target, alphabetical.
+
+## Viewing another day
+
+`‹` / `›` in the header page back and forth, `Today` returns, and ←/→/Home do the
+same from a keyboard. `/api/snapshot?day=-1` is yesterday, clamped to 30 days back.
+
+Only today is polled on a timer. Any other day is fetched on demand and cached for
+15 minutes (`dayCache` in `poll/index.js`) — a finished day does not change, so
+paging back costs one round trip and is then free.
+
+Three things keep history from being mistaken for live data, which is the whole
+risk of this feature on a wall-mounted screen:
+
+- The header goes amber, the status reads `Historical · <date>`, and the pulsing
+  live dot stops.
+- The **clock is replaced** by "Yesterday" / "N days ago". A ticking clock above
+  finished numbers is the single most misleading thing this board could show.
+- **It snaps back to today after 10 minutes idle.** Someone checks yesterday, walks
+  away, and the TV is left lying to the room until somebody notices. Any click or
+  keypress resets the timer.
+
+`stale` is only ever computed for today — a finished day is done, not stale, and
+flagging it amber would train people to ignore the warning that actually matters.
 
 ## Two scopes — do not unify them
 

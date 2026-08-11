@@ -54,6 +54,16 @@ Devices without the cookie get a 404, same as a wrong token. `/logout` unpairs
 the current device; rotating `BOARD_TOKEN` unpairs **every** device, which is
 the way to revoke a screen you no longer control.
 
+### Looking at another day
+
+`‹` and `›` in the header page back through the last 30 days, `Today` returns.
+Arrow keys and `Home` work if there's a keyboard.
+
+Viewing history turns the header amber, replaces the clock with "Yesterday" /
+"N days ago", and stops the live dot — a finished day must never read as the
+live board. It also **snaps back to today after 10 minutes idle**, so a TV left
+on yesterday doesn't quietly misinform the room.
+
 ## Deploy to Railway
 
 ```bash
@@ -96,6 +106,7 @@ sudo systemctl enable --now wallboard-kiosk
 | `/board` | the display (paired devices only) |
 | `/` | paired → the board; otherwise → `/healthz` |
 | `/api/snapshot` | JSON the display renders (paired devices only) |
+| `/api/snapshot?day=-1` | yesterday; clamped to 30 days back |
 | `/logout` | unpair this device |
 | `/healthz` | no token; 200 fresh, 503 stale |
 

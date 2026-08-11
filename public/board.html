@@ -34,6 +34,22 @@
   .clock{font-family:var(--cond);font-weight:600;font-size:52px;line-height:1}
   .datestamp{font-family:var(--cond);font-size:19px;color:var(--ink-2);letter-spacing:.1em;text-transform:uppercase;text-align:right}
 
+  /* Day navigation. Buttons are large and always visible because the TV has
+     no keyboard — arrow keys are the convenience, not the interface. */
+  .daynav{display:flex;align-items:center;gap:10px;margin-left:26px}
+  .daywrap{min-width:210px;text-align:right}
+  .daynav button{font-family:var(--cond);font-size:30px;line-height:1;font-weight:600;
+    color:var(--ink-2);background:var(--panel-2);border:1px solid var(--edge);border-radius:6px;
+    width:46px;height:52px;cursor:pointer;transition:background .15s,color .15s}
+  .daynav button:hover:not(:disabled){background:#2A3238;color:var(--ink)}
+  .daynav button:disabled{opacity:.28;cursor:default}
+  .daynav button.today{width:auto;padding:0 16px;font-size:21px;letter-spacing:.1em;text-transform:uppercase}
+  .daynav button.today.on{background:var(--red);border-color:var(--red);color:#fff}
+  /* Viewing history: the whole header shifts amber so nobody reads a finished
+     day as the live board. The pulsing dot also stops. */
+  .past .datestamp{color:var(--amber)}
+  .past .dot{animation:none;background:var(--amber)}
+
   .kpistrip{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;background:var(--edge);
     border-bottom:1px solid var(--edge);flex:0 0 158px;position:relative;z-index:2}
   .kpi{background:var(--panel);padding:18px 24px;position:relative;overflow:hidden}
@@ -209,9 +225,14 @@
     </div>
     <div class="hgap"></div>
     <div class="live"><span class="dot"></span><span id="hFresh">Live · updated 8s ago</span></div>
-    <div style="text-align:right;margin-left:28px">
-      <div class="clock" id="hClock">2:47 PM</div>
-      <div class="datestamp" id="hDate">Wed · Jul 29</div>
+    <div class="daynav">
+      <button id="dPrev" title="Previous day (←)">‹</button>
+      <div class="daywrap">
+        <div class="clock" id="hClock">2:47 PM</div>
+        <div class="datestamp" id="hDate">Wed · Jul 29</div>
+      </div>
+      <button id="dNext" title="Next day (→)">›</button>
+      <button id="dToday" class="today" title="Back to today (Home)">Today</button>
     </div>
   </header>
 
@@ -318,11 +339,11 @@ function render(){
       s:rec&&rec.pct!=null
         ?rec.recovered+' of '+rec.scored+' missed callers booked within '+rec.days+' days'
         :'Recovery still loading'},
-    {l:'Missed today',v:callsOk?missed:'—',
-      s:'Handed to text-back'+(rec&&rec.pending?' · '+rec.pending+' still in the window':''),
+    {l:D.isToday?'Missed today':'Missed',v:callsOk?missed:'—',
+      s:'Handed to text-back'+(D.isToday&&rec&&rec.pending?' · '+rec.pending+' still in the window':''),
       warn:missed>0},
     {l:'Jobs booked',v:booked,s:'<span class="warn">'+est+' estimate'+(est===1?'':'s')+'</span> · '+work+' work jobs'},
-    {l:'Estimate share',v:estShare.toFixed(0)+'%',s:est+' of '+booked+' jobs entered today'}
+    {l:'Estimate share',v:estShare.toFixed(0)+'%',s:est+' of '+booked+' jobs'+(D.isToday?' entered today':'')}
   ].map(k=>`<div class="kpi ${k.hero?'hero':''}"><div class="lbl">${k.l}</div>
       <div class="val${k.warn?' warn':''}">${k.v}</div><div class="sub">${k.s}</div></div>`).join('');
 
@@ -375,11 +396,17 @@ function render(){
   : state==='pos' ? `<b style="color:var(--green)">${net} ahead</b> — forward book is growing.`
   :                 `<b style="color:var(--amber)">Holding even</b> — the next booking puts us ahead.`;
 
+  /* Churn only exists for today — it measures the board moving against the
+     first poll of the morning, which was never recorded for a finished day.
+     Say so rather than showing a plausible-looking zero. */
   const ch=D.churn;
-  $('churn').innerHTML=`<span class="pill">Board live</span>
-    Opened at <b style="color:var(--ink-2)">${ch.open}</b> ·
-    <b class="up">+${ch.added} added</b> ·
-    <b class="down">−${ch.cancelled} cancelled</b> since ${ch.since}`;
+  $('churn').innerHTML = ch
+    ? `<span class="pill">Board live</span>
+       Opened at <b style="color:var(--ink-2)">${ch.open}</b> ·
+       <b class="up">+${ch.added} added</b> ·
+       <b class="down">−${ch.cancelled} cancelled</b> since ${ch.since}`
+    : `<span class="pill">Final</span>
+       <span style="color:var(--ink-3)">Board movement is only tracked live — not available for a past day</span>`;
 
   if(net!==lastNet){ nn.classList.remove('bump'); void nn.offsetWidth; nn.classList.add('bump'); }
   lastNet=net;
@@ -433,11 +460,12 @@ function render(){
   }).join('');
 }
 
-let s=8;
-setInterval(()=>{s=(s+1)%60;$('hFresh').textContent='Live · updated '+s+'s ago';
+/* The clock ticks only while looking at today. On a past day it is replaced by
+   that day's label — a live clock over finished numbers reads as live data. */
+setInterval(()=>{
+  if(dayOffset!==0) return;
   const n=new Date();
   $('hClock').textContent=n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  $('hDate').textContent=n.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}).replace(',',' ·');
 },1000);
 
 
@@ -452,32 +480,83 @@ setInterval(()=>{s=(s+1)%60;$('hFresh').textContent='Live · updated '+s+'s ago'
    sitting in the address bar of a screen people walk past. */
 const REFRESH_MS = 30000;
 let lastGood = 0;
+let dayOffset = 0;          // 0 = today, -1 = yesterday, \u2026
+let maxLookback = 30;
 
 function setFresh(txt, warn){
   const el = $('hFresh');
   el.textContent = txt;
   el.style.color = warn ? 'var(--amber)' : '';
-  document.querySelector('.dot').style.background = warn ? 'var(--amber)' : 'var(--green)';
+  const dot = document.querySelector('.dot');
+  if(dot && dayOffset===0) dot.style.background = warn ? 'var(--amber)' : 'var(--green)';
+}
+
+function paintDayNav(){
+  const past = dayOffset !== 0;
+  document.getElementById('stage').classList.toggle('past', past);
+  $('dNext').disabled = dayOffset >= 0;
+  $('dPrev').disabled = dayOffset <= -maxLookback;
+  $('dToday').classList.toggle('on', past);
+  if(past) $('hClock').textContent = dayOffset === -1 ? 'Yesterday'
+    : Math.abs(dayOffset) + ' days ago';
 }
 
 async function load(){
+  const want = dayOffset;               // guard against a slow reply landing late
   try{
-    const res = await fetch('/api/snapshot', {cache:'no-store', credentials:'same-origin'});
+    const res = await fetch('/api/snapshot?day=' + want, {cache:'no-store', credentials:'same-origin'});
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const snap = await res.json();
-    if(!snap.ready){ setFresh('Waiting for first poll', true); return; }
+    if(want !== dayOffset) return;       // user paged again while this was in flight
+    if(!snap.ready){
+      setFresh(snap.error || 'Waiting for first poll', true);
+      return;
+    }
     D = snap;
+    maxLookback = snap.maxLookback ?? maxLookback;
     lastGood = Date.now();
     render();
-    setFresh(snap.stale ? 'Stale \u2014 ServiceTitan not responding' : 'Live', !!snap.stale);
+    $('hDate').textContent = snap.dateLabel;
+    paintDayNav();
+    setFresh(snap.isToday
+      ? (snap.stale ? 'Stale \u2014 ServiceTitan not responding' : 'Live')
+      : 'Historical \u00b7 ' + snap.dateLabel, !snap.isToday || !!snap.stale);
   }catch(e){
+    if(want !== dayOffset) return;
     const mins = lastGood ? Math.round((Date.now()-lastGood)/60000) : null;
     setFresh(mins==null ? 'Connecting\u2026' : 'Stale \u2014 ' + mins + ' min old', true);
   }
 }
 
+function goDay(offset){
+  const next = Math.min(0, Math.max(-maxLookback, offset));
+  if(next === dayOffset) return;
+  dayOffset = next;
+  paintDayNav();
+  setFresh('Loading\u2026', true);
+  load();
+}
+
+$('dPrev').onclick  = () => goDay(dayOffset - 1);
+$('dNext').onclick  = () => goDay(dayOffset + 1);
+$('dToday').onclick = () => goDay(0);
+addEventListener('keydown', e => {
+  if(e.key === 'ArrowLeft')  goDay(dayOffset - 1);
+  if(e.key === 'ArrowRight') goDay(dayOffset + 1);
+  if(e.key === 'Home' || e.key === 't') goDay(0);
+});
+
 load();
+paintDayNav();
 setInterval(load, REFRESH_MS);
+
+/* A wall display left on yesterday is a liability \u2014 someone walks past at noon
+   and reads finished numbers as today's. Snap back after 10 minutes idle. */
+let idleSince = Date.now();
+['click','keydown'].forEach(ev => addEventListener(ev, () => { idleSince = Date.now(); }));
+setInterval(() => {
+  if(dayOffset !== 0 && Date.now() - idleSince > 600000) goDay(0);
+}, 30000);
 
 /* Reload nightly so a long-running kiosk never drifts. */
 setInterval(() => { if (new Date().getHours() === 4) location.reload(); }, 3600000);
