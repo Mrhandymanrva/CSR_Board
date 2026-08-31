@@ -367,7 +367,7 @@ function render(s) {
   ig.classList.toggle('bad', s.integrity.unattributed > 0);
   ig.innerHTML = `<span class="ok"></span>` + (s.integrity.unattributed > 0
     ? `${s.integrity.unattributed} job${s.integrity.unattributed === 1 ? '' : 's'} (${usd(s.integrity.unattributedRevenue)}) not matched to a technician`
-    : `${s.integrity.matched} of ${s.integrity.matched} jobs matched to a technician · 0 unattributed`);
+    : `${s.integrity.matched} of ${s.integrity.total ?? s.integrity.matched} jobs matched to a technician · 0 unattributed`);
 }
 
 /* Ticker lines are generated from the current numbers, never hand-written, so

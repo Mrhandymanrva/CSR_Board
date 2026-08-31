@@ -153,6 +153,18 @@ export async function snapshot(weeksBack = 0) {
   const rows = R.buildTechRows(days, state.refs.technicians, todayIndex);
   const tot = R.totals(rows, DAYS_IN_WEEK);
 
+  /* JOB COUNTS COME FROM THE DAY, NEVER FROM SUMMING ROWS.
+     A job worked by two technicians appears in two rows, so the row-sum counts
+     it twice — it is a count of (job, technician) pairs wearing the label
+     "jobs". It happens to equal the job count today because every job in the
+     sampled weeks had exactly one technician, which is precisely why the error
+     is invisible: broken and correct look identical until the first two-tech
+     job. Revenue IS safe to sum, because the even split adds back to the whole.
+     Unattributed jobs are included here on purpose: N jobs were completed that
+     day whether or not the board could place them. */
+  for (let i = 0; i < DAYS_IN_WEEK; i++) tot.perDay[i].jobs = days[i]?.jobs ?? 0;
+  tot.weekJobs = tot.perDay.reduce((s, d) => s + d.jobs, 0);
+
   const crewGoal = rows.reduce((s, r) => s + r.goal, 0);
   const todayRevenue = hasToday ? tot.perDay[todayIndex].revenue : 0;
   const todayJobs = hasToday ? tot.perDay[todayIndex].jobs : 0;
@@ -208,9 +220,14 @@ export async function snapshot(weeksBack = 0) {
 
     /* Shown in the footer. A revenue board that quietly drops money it cannot
        place is worse than one that admits it. 0 across the sampled week. */
+    /* `matched` and `total` must be DIFFERENT quantities. They were both
+       tot.weekJobs, and the footer printed the same variable twice — "52 of 52"
+       was a tautology that could not render anything else, on the one line
+       whose whole job is to say whether the board lost any money. */
     integrity: {
       unattributed,
-      matched: tot.weekJobs,
+      total: tot.weekJobs,
+      matched: tot.weekJobs - unattributed,
       unattributedRevenue: Math.round(days.reduce((s, d) => s + (d.unattributedRevenue ?? 0), 0) * 100) / 100,
     },
 
