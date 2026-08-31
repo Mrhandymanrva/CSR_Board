@@ -260,15 +260,19 @@ function render(s) {
   document.getElementById('prev').disabled = s.week <= -maxBack;
   maxBack = s.maxLookbackWeeks ?? maxBack;
 
+  /* NOT isThisWeek — Sunday is LIVE but has no "today" column, and captioning
+     the hero "Invoiced today $0 · 0% of goal" on a day nobody works is a lie
+     the size of the screen. Only hasToday may gate anything captioned today. */
   const k = s.kpi;
+  const hasToday = s.hasToday !== false && s.todayIndex >= 0;
   document.getElementById('kpis').innerHTML = `
     <div class="kpi hero">
-      <div class="lbl">${s.isThisWeek ? 'Invoiced today' : 'Week invoiced'}</div>
-      <div class="val">${usd(s.isThisWeek ? k.todayRevenue : k.weekRevenue)}</div>
-      ${s.isThisWeek && k.crewPct != null
+      <div class="lbl">${hasToday ? 'Invoiced today' : 'Week invoiced'}</div>
+      <div class="val">${usd(hasToday ? k.todayRevenue : k.weekRevenue)}</div>
+      ${hasToday && k.crewPct != null
         ? `<div class="crewbar"><i style="width:${Math.min(k.crewPct, 100)}%"></i></div>
            <div class="sub">${k.crewPct}% of the ${usd(k.crewGoal)} crew goal · ${k.todayJobs} job${k.todayJobs === 1 ? '' : 's'} closed</div>`
-        : `<div class="sub">${k.weekJobs} jobs</div>`}
+        : `<div class="sub">${k.weekJobs} jobs${s.isThisWeek && !hasToday ? ' · week complete' : ''}</div>`}
     </div>
     <div class="kpi">
       <div class="lbl">Week to date</div>
@@ -282,7 +286,7 @@ function render(s) {
     </div>
     <div class="kpi">
       <div class="lbl">Techs invoicing</div>
-      <div class="val">${k.techsInvoicing}<span style="font-size:30px;color:var(--ink-3)"> / ${k.techsOnBoard}</span></div>
+      <div class="val">${k.techsInvoicing == null ? '—' : k.techsInvoicing}<span style="font-size:30px;color:var(--ink-3)"> / ${k.techsOnBoard}</span></div>
       <div class="sub">${k.estimateVisits ? k.estimateVisits + ' on estimate visits' : 'on the board this week'}</div>
     </div>
     <div class="kpi">
@@ -303,7 +307,7 @@ function render(s) {
     `<b>steel = estimate &amp; no-charge visits: real work, no invoice</b>`;
 
   document.getElementById('thead').innerHTML =
-    `<div>Technician</div><div>${s.isThisWeek ? 'Today vs daily goal' : 'Daily goal'}</div>` +
+    `<div>Technician</div><div>${hasToday ? 'Today vs daily goal' : 'Daily goal'}</div>` +
     s.columns.map((c) =>
       `<div class="dcol${c.isToday ? ' now' : ''}${c.isSaturday ? ' we' : ''}">${esc(c.label)}</div>`).join('') +
     `<div class="tot">Week · &times;jobs</div><div>Recalls</div>`;
@@ -345,7 +349,7 @@ function render(s) {
   const t = s.totals;
   document.getElementById('totrow').innerHTML =
     `<div class="lbl">All technicians</div>` +
-    (s.isThisWeek && k.crewPct != null
+    (hasToday && k.crewPct != null
       ? `<div class="goalwrap"><div class="track"><div class="fill" style="width:${Math.min(k.crewPct, 100)}%"></div></div><div class="gpct">${k.crewPct}%</div></div>`
       : `<div class="gpct">—</div>`) +
     s.columns.map((col, i) => {
@@ -427,6 +431,11 @@ setInterval(() => {
 
 function fit() {
   const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  /* A zero-sized viewport at load — a kiosk browser still creating its window —
+     makes scale 0, and the board renders BLANK and never recovers, because no
+     resize event follows to correct it. Retry until the window has a size.
+     setTimeout, not requestAnimationFrame: a backgrounded tab never fires rAF. */
+  if (!(s > 0)) { setTimeout(fit, 100); return; }
   const x = (innerWidth - 1920 * s) / 2;
   const y = (innerHeight - 1080 * s) / 2;
   document.getElementById('stage').style.transform = `translate(${x}px, ${y}px) scale(${s})`;

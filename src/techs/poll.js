@@ -143,13 +143,19 @@ export async function snapshot(weeksBack = 0) {
                       : await getDay(off));
   }
 
+  /* There is not always a "today". Sunday is not one of the six columns, so on a
+     Sunday todayIndex is -1 and the board is showing the week that just finished
+     while still being live. Everything captioned "today" must go quiet, or the
+     hero reads "Invoiced today $0 · 0% of goal" on a day nobody is working —
+     the same false accusation the non-revenue rule exists to prevent. */
   const todayIndex = offsets.indexOf(0);
+  const hasToday = todayIndex >= 0;
   const rows = R.buildTechRows(days, state.refs.technicians, todayIndex);
   const tot = R.totals(rows, DAYS_IN_WEEK);
 
   const crewGoal = rows.reduce((s, r) => s + r.goal, 0);
-  const todayRevenue = todayIndex >= 0 ? tot.perDay[todayIndex].revenue : 0;
-  const todayJobs = todayIndex >= 0 ? tot.perDay[todayIndex].jobs : 0;
+  const todayRevenue = hasToday ? tot.perDay[todayIndex].revenue : 0;
+  const todayJobs = hasToday ? tot.perDay[todayIndex].jobs : 0;
   const revenueJobs = rows.reduce((s, r) => s + (r.todayNonRevenue ? 0 : r.todayJobs), 0);
   const estimateVisits = rows.reduce((s, r) => s + (r.todayNonRevenue ? r.todayJobs : 0), 0);
 
@@ -171,6 +177,7 @@ export async function snapshot(weeksBack = 0) {
     error: isThisWeek ? state.lastError : null,
 
     todayIndex,
+    hasToday,
     columns: offsets.map((off) => ({
       offset: off,
       label: dayColLabel(off),
@@ -185,9 +192,11 @@ export async function snapshot(weeksBack = 0) {
       revenueJobs,
       estimateVisits,
       crewGoal,
-      crewPct: crewGoal > 0 ? Math.round((todayRevenue / crewGoal) * 100) : null,
-      avgTicket: revenueJobs > 0 ? Math.round(todayRevenue / revenueJobs) : null,
-      techsInvoicing: rows.filter((r) => r.today > 0).length,
+      /* All three are null rather than 0 when there is no today. A dash reads as
+         "nothing to report"; a zero reads as "they produced nothing". */
+      crewPct: hasToday && crewGoal > 0 ? Math.round((todayRevenue / crewGoal) * 100) : null,
+      avgTicket: hasToday && revenueJobs > 0 ? Math.round(todayRevenue / revenueJobs) : null,
+      techsInvoicing: hasToday ? rows.filter((r) => r.today > 0).length : null,
       techsOnBoard: rows.length,
       weekRevenue: tot.weekRevenue,
       weekJobs: tot.weekJobs,

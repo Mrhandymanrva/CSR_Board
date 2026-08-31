@@ -14,9 +14,9 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;background:#000;overflow:hidden;font-family:var(--body)}
-  #viewport{position:fixed;inset:0;display:grid;place-items:center}
-  #stage{width:1920px;height:1080px;transform-origin:center center;background:var(--canvas);
-    color:var(--ink);display:flex;flex-direction:column;position:relative;overflow:hidden}
+  #viewport{position:fixed;inset:0;overflow:hidden}
+  #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;background:var(--canvas);
+    color:var(--ink);display:flex;flex-direction:column;overflow:hidden}
   #stage::before{content:'';position:absolute;inset:0;pointer-events:none;
     background:radial-gradient(1200px 600px at 10% -10%,rgba(200,16,46,.10),transparent 60%)}
 
@@ -301,7 +301,18 @@
 
 <script>
 const stage=document.getElementById('stage');
-function fit(){stage.style.transform='scale('+Math.min(innerWidth/1920,innerHeight/1080)+')'}
+function fit(){
+  /* Do NOT centre via place-items:center on #viewport — a grid refuses to
+     centre an item larger than its track, so below 1920x1080 the stage shifts
+     by half the overflow (measured: 160px left at 1600x900). Offset explicitly. */
+  const s=Math.min(innerWidth/1920,innerHeight/1080);
+  /* A zero-sized viewport at load — a kiosk browser still creating its window —
+     makes scale 0, and the board renders BLANK and never recovers, because no
+     resize event follows to correct it. Retry until the window has a size.
+     setTimeout, not requestAnimationFrame: a backgrounded tab never fires rAF. */
+  if(!(s>0)){setTimeout(fit,100);return;}
+  stage.style.transform='translate('+((innerWidth-1920*s)/2)+'px,'+((innerHeight-1080*s)/2)+'px) scale('+s+')';
+}
 addEventListener('resize',fit);fit();
 
 let D = null;
