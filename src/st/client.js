@@ -19,36 +19,64 @@ let token = null;
 let tokenExp = 0;
 let inFlight = null;
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* A CDN error page (Cloudflare 502 etc.) is HTML. Logging 300 chars of it
+   buries the real signal, so collapse anything that isn't plain text/JSON. */
+function briefBody(text) {
+  const t = (text || '').trim();
+  if (!t) return '(empty body)';
+  if (t.startsWith('<')) return 'HTML error page from upstream (ServiceTitan auth/CDN outage, not a credentials problem)';
+  return t.slice(0, 300);
+}
+
+const AUTH_ATTEMPTS = 4;
+
+async function fetchToken() {
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: cfg.st.clientId,
+    client_secret: cfg.st.clientSecret,
+  });
+
+  let lastErr;
+  for (let attempt = 0; attempt < AUTH_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(2 ** attempt * 750); // 1.5s, 3s, 6s
+    try {
+      const res = await fetch(host.auth, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        token = json.access_token;
+        tokenExp = Date.now() + (json.expires_in ?? 900) * 1000 - 60_000;
+        return token;
+      }
+      const text = await res.text().catch(() => '');
+      lastErr = new Error(`Auth failed ${res.status}: ${briefBody(text)}`);
+      // 4xx other than 429 means bad credentials/config. Retrying cannot help.
+      if (res.status < 500 && res.status !== 429) throw lastErr;
+    } catch (e) {
+      if (e === lastErr) throw e;
+      lastErr = new Error(`Auth request failed: ${e.message}`); // network error / timeout
+    }
+  }
+  throw lastErr;
+}
+
 async function getToken() {
   if (token && Date.now() < tokenExp) return token;
   if (inFlight) return inFlight;
 
-  inFlight = (async () => {
-    const body = new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: cfg.st.clientId,
-      client_secret: cfg.st.clientSecret,
-    });
-    const res = await fetch(host.auth, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`Auth failed ${res.status}: ${text.slice(0, 300)}`);
-    }
-    const json = await res.json();
-    token = json.access_token;
-    tokenExp = Date.now() + (json.expires_in ?? 900) * 1000 - 60_000;
-    inFlight = null;
-    return token;
-  })();
-
+  /* inFlight MUST be cleared on failure as well as success. It used to be
+     cleared only on success, so one failed auth left a rejected promise cached
+     forever and every later call (both boards) re-threw it until a restart. */
+  inFlight = fetchToken().finally(() => { inFlight = null; });
   return inFlight;
 }
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * GET one page from a ServiceTitan v2 endpoint.
