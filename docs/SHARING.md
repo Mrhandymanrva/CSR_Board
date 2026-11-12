@@ -56,6 +56,7 @@ Then fill in, from the probe output and their own operation:
 |---|---|
 | `ESTIMATE_JOB_TYPE_IDS` | their estimate job types — IDs differ per tenant |
 | `CSR_EMPLOYEE_IDS` | their CSR roster; pin it, or an automation account appears as a phantom top performer |
+| `CSR_HIDE_EMPLOYEE_IDS` | optional. People to leave off the grid without dropping their jobs and leads from the totals. When the roster is pinned, these ids must also be in `CSR_EMPLOYEE_IDS` |
 | `BRAND_NAME` `MARKET_LABEL` `BOARD_SUBTITLE` | header text |
 | `BU_LOCATION_TAGS` | `match=TAG` pairs for their business-unit naming |
 | `BUSINESS_OPEN_HOUR` `BUSINESS_CLOSE_HOUR` `BUSINESS_DAYS` | **their** hours, not yours |

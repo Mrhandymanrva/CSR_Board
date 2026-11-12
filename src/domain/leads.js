@@ -179,6 +179,11 @@ function blank(id) {
  * `leadsReady` false → episode columns are null (history not loaded yet).
  * Jobs booked still render; they come from the day's jobs alone.
  * `booked` on a row is JOBS, so the rest of the board's sums stay job counts.
+ *
+ * `hideIds` (default `CSR_HIDE_EMPLOYEE_IDS`) are accumulated exactly like
+ * everyone else, then dropped from `rows` only. `team` still includes them.
+ * An id the roster already rejects is not counted: when `CSR_EMPLOYEE_IDS`
+ * is pinned, a hidden person has to be in that list too.
  */
 export function buildPeopleRows({
   employees = new Map(),
@@ -187,9 +192,13 @@ export function buildPeopleRows({
   notLeadByEmployee = new Map(),
   jobs = [],
   csrIds = null,
+  hideIds = null,
   leadsReady = true,
 }) {
   const want = (csrIds ?? cfg.rules.csrEmployeeIds).map(numId).filter((id) => id != null);
+  const hide = new Set(
+    (hideIds ?? cfg.rules.csrHideEmployeeIds).map(numId).filter((id) => id != null),
+  );
   const acc = new Map();
 
   const ensure = (id) => {
@@ -236,7 +245,8 @@ export function buildPeopleRows({
     if (isEstimate(job)) row.est++;
   }
 
-  const rows = [...acc.values()].map((r) => {
+  const accumulated = [...acc.values()];
+  const toRow = (r) => {
     const name = employees.get(r.id)?.name ?? employees.get(String(r.id))?.name ?? `Employee ${r.id}`;
     return {
       n: name,
@@ -256,13 +266,17 @@ export function buildPeopleRows({
       st: 'none',
       stl: '',
     };
-  }).sort((a, b) => a.n.localeCompare(b.n));
+  };
+  const rows = accumulated
+    .filter((r) => !hide.has(r.id))
+    .map(toRow)
+    .sort((a, b) => a.n.localeCompare(b.n));
 
   const team = {
     leads: 0, bookedLeads: 0, unbooked: 0, notLead: 0, booked: 0, est: 0,
     rateLeads: 0, rateBooked: 0, trailLeads: 0, trailBooked: 0,
   };
-  for (const r of rows) {
+  for (const r of accumulated) {
     team.notLead += r.notLead || 0;
     team.booked += r.booked || 0;
     team.est += r.est || 0;
@@ -305,6 +319,7 @@ export function peopleForWindow({
   now = Date.now(),
   leadsReady = true,
   csrIds = null,
+  hideIds = null,
 }) {
   const notLeadByEmployee = new Map();
   for (const call of calls) {
@@ -336,6 +351,7 @@ export function peopleForWindow({
     notLeadByEmployee,
     jobs: dayJobs,
     csrIds,
+    hideIds,
     leadsReady,
   });
 }

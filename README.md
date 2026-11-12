@@ -79,6 +79,7 @@ Set these in the Railway service variables — not in the repo:
 | `BOARD_TOKEN` | `openssl rand -hex 24` |
 | `TZ` | **`America/New_York`** — required, see below |
 | `ESTIMATE_JOB_TYPE_IDS` `CSR_EMPLOYEE_IDS` | from `npm run probe` |
+| `CSR_HIDE_EMPLOYEE_IDS` | optional, default empty. Omit these employees from the people grid; their jobs and leads stay in the totals. If `CSR_EMPLOYEE_IDS` is pinned, keep the hidden ids in that list too |
 | `CC_RC_LOG_URL` `CC_RC_LOG_KEY` | optional. Command Center export of the RingCentral account call log. Unset = ServiceTitan-only missed calls |
 | `RC_CLIENT_ID` `RC_CLIENT_SECRET` `RC_JWT` | optional. Direct RingCentral (JWT), used when the Command Center URL is unset. See `.env.example` |
 
