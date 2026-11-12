@@ -320,7 +320,8 @@ export function snapshot(day = state.today, offsetDays = 0) {
   const { booked, dispatch, calls, churn } = day;
   const isToday = offsetDays === 0;
   /* Alphabetical, from buildPeopleRows. Sorting by any metric is a ranking.
-     `booked` on each row is jobs created today (createdById), not leads. */
+     `booked` on each row is jobs created today (createdById), not leads.
+     Rows omit CSR_HIDE_EMPLOYEE_IDS. `team` still includes them. */
   const people = day.people ?? { ready: false, rows: [], team: null };
   const csrs = people.rows ?? [];
 
@@ -371,16 +372,17 @@ export function snapshot(day = state.today, offsetDays = 0) {
     team: people.team,
     bus,
     week: state.week,
-    ticker: buildTicker({ csrs, bus, week: state.week, churn, calls, recovery: state.recovery }),
+    ticker: buildTicker({ team: people.team, bus, week: state.week, churn, calls, recovery: state.recovery }),
   };
 }
 
 /* Ticker lines are generated, not hand-written: the board should always
-   be saying something true about the current numbers. */
-function buildTicker({ csrs, bus, week, churn, calls, recovery }) {
+   be saying something true about the current numbers. Totals come from
+   `team`, which still includes anyone hidden from the people grid. */
+function buildTicker({ team, bus, week, churn, calls, recovery }) {
   const bits = [];
-  const totalBooked = csrs.reduce((s, c) => s + c.booked, 0);
-  const totalEst = csrs.reduce((s, c) => s + c.est, 0);
+  const totalBooked = team?.booked ?? 0;
+  const totalEst = team?.est ?? 0;
 
   /* The old ticker named the CSR with the highest estimate share. That was a
      dispatch-first reflex — booking an estimate is the correct outcome of an

@@ -57,6 +57,11 @@ export const cfg = {
     avgTicket: int('AVG_TICKET_USD', 520),
     estimateJobTypeIds: ids('ESTIMATE_JOB_TYPE_IDS'),
     csrEmployeeIds: ids('CSR_EMPLOYEE_IDS'),
+    /* Omitted from the people grid only. Still accumulated into the team
+       total, which is what the jobs-booked KPI, net, and ticker read.
+       Counted only when the roster would have counted them: if
+       CSR_EMPLOYEE_IDS is pinned, a hidden id has to be in that list too. */
+    csrHideEmployeeIds: ids('CSR_HIDE_EMPLOYEE_IDS'),
     opportunityCallReasonIds: ids('OPPORTUNITY_CALL_REASON_IDS'),
     statusSource: process.env.STATUS_SOURCE || 'none',
     /* Calls arriving when the office is shut are not a service failure — 97% of

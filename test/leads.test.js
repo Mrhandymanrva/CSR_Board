@@ -322,6 +322,128 @@ test('lead columns stay blank until the 30-day corpus is ready; jobs still count
   assert.equal(team.booked, 1);
 });
 
+test('hidden employees are absent from the grid and still inside the team total', () => {
+  cfg.rules.estimateJobTypeIds = [9];
+  const calls = [
+    call({ type: 'Booked', at: T0, agent: 1, customer: 101, from: '8045551101' }),
+    call({ type: 'Booked', at: T0 + 1000, agent: 1, customer: 102, from: '8045551102' }),
+    call({ type: 'Unbooked', at: T0, agent: 2, customer: 201, from: '8045552201' }),
+    call({ type: 'NotLead', at: T0, agent: 2, from: '8045552202' }),
+    call({ type: 'Unbooked', at: T0 - 10 * DAY, agent: 2, customer: 202, from: '8045552203' }),
+    call({ type: 'Booked', at: T0, agent: 3, customer: 301, from: '8045553301' }),
+  ];
+  const jobs = [
+    job({ at: T0, by: 1, customer: 101 }),
+    job({ at: T0, by: 2, customer: 299 }),
+    job({ at: T0 + 1000, by: 2, customer: 298, typeId: 9 }),
+    job({ at: T0, by: 3, customer: 301 }),
+  ];
+  const args = { calls, jobs, csrIds: [1, 2, 3] };
+  const open = people({ ...args, hideIds: [] });
+  const hidden = people({ ...args, hideIds: [2] });
+  const hiddenAsString = people({ ...args, hideIds: ['2'] });
+
+  assert.deepEqual(open.rows.map((r) => r.n), ['Casey Morgan', 'Jordan Hale', 'Riley Chen']);
+  assert.deepEqual(hidden.rows.map((r) => r.n), ['Casey Morgan', 'Jordan Hale']);
+  assert.deepEqual(hiddenAsString.rows.map((r) => r.n), hidden.rows.map((r) => r.n));
+  assert.equal(hidden.rows.some((r) => r.n === 'Riley Chen'), false);
+
+  assert.equal(hidden.team.booked, open.team.booked);
+  assert.equal(hidden.team.leads, open.team.leads);
+  assert.equal(hidden.team.bookedLeads, open.team.bookedLeads);
+  assert.equal(hidden.team.closingPct, open.team.closingPct);
+  assert.equal(hidden.team.est, open.team.est);
+  assert.equal(hidden.team.notLead, open.team.notLead);
+  assert.equal(hidden.team.trailPct, open.team.trailPct);
+  assert.equal(hidden.team.trailBooked, open.team.trailBooked);
+  assert.equal(hidden.team.trailLeads, open.team.trailLeads);
+
+  assert.equal(hidden.team.booked, 4);
+  assert.equal(hidden.rows.reduce((s, r) => s + r.booked, 0), 2);
+  assert.equal(hidden.team.est, 1);
+  assert.equal(hidden.rows.reduce((s, r) => s + r.est, 0), 0);
+  assert.equal(hidden.team.leads, 4);
+  assert.equal(hidden.rows.reduce((s, r) => s + r.leads, 0), 3);
+  assert.equal(hidden.team.notLead, 1);
+  assert.equal(hidden.rows.reduce((s, r) => s + r.notLead, 0), 0);
+  // Pooled with the hidden unbooked lead. The visible rows alone would be 100.
+  assert.equal(hidden.team.closingPct, 75);
+  assert.equal(hidden.team.trailBooked, 3);
+  assert.equal(hidden.team.trailLeads, 5);
+  assert.equal(hidden.team.trailPct, 60);
+
+  const unpinned = people({ calls, jobs, csrIds: [], hideIds: [2] });
+  assert.deepEqual(unpinned.rows.map((r) => r.n), ['Casey Morgan', 'Jordan Hale']);
+  assert.equal(unpinned.team.booked, hidden.team.booked);
+  assert.equal(unpinned.team.leads, hidden.team.leads);
+  assert.equal(unpinned.team.closingPct, hidden.team.closingPct);
+
+  const pending = people({ ...args, hideIds: [2], leadsReady: false });
+  assert.deepEqual(pending.rows.map((r) => r.n), ['Casey Morgan', 'Jordan Hale']);
+  assert.equal(pending.team.booked, 4);
+  assert.equal(pending.team.leads, null);
+  assert.equal(pending.team.closingPct, null);
+  assert.equal(pending.rows.reduce((s, r) => s + r.booked, 0), 2);
+});
+
+test('an empty hide list matches the full roster, totals and all', () => {
+  assert.deepEqual(cfg.rules.csrHideEmployeeIds, []);
+  cfg.rules.estimateJobTypeIds = [9];
+  const args = {
+    csrIds: [1, 2, 3],
+    calls: [
+      call({ type: 'Unbooked', at: T0, agent: 1, customer: 401, from: '8045554401' }),
+      call({ type: 'Booked', at: T0, agent: 2, customer: 402, from: '8045554402' }),
+      call({ type: 'Booked', at: T0 - 5 * DAY, agent: 2, customer: 403, from: '8045554403' }),
+      call({ type: 'Booked', at: T0, agent: 3, customer: 404, from: '8045554404' }),
+    ],
+    jobs: [
+      job({ at: T0, by: 2, customer: 402 }),
+      job({ at: T0, by: 3, customer: 404, typeId: 9 }),
+    ],
+  };
+  const empty = people({ ...args, hideIds: [] });
+  const prev = cfg.rules.csrHideEmployeeIds;
+  cfg.rules.csrHideEmployeeIds = [];
+  let viaConfig;
+  try {
+    viaConfig = people(args);
+  } finally {
+    cfg.rules.csrHideEmployeeIds = prev;
+  }
+  assert.deepEqual(empty, viaConfig);
+  assert.deepEqual(empty.rows.map((r) => r.n), ['Casey Morgan', 'Jordan Hale', 'Riley Chen']);
+  assert.equal(empty.team.booked, empty.rows.reduce((s, r) => s + r.booked, 0));
+  assert.equal(empty.team.leads, empty.rows.reduce((s, r) => s + r.leads, 0));
+  assert.equal(empty.team.est, empty.rows.reduce((s, r) => s + r.est, 0));
+  assert.equal(empty.team.bookedLeads, empty.rows.reduce((s, r) => s + r.bookedLeads, 0));
+  assert.equal(empty.team.notLead, empty.rows.reduce((s, r) => s + r.notLead, 0));
+  const rateBooked = empty.rows.reduce((s, r) => s + r.rateBooked, 0);
+  const rateLeads = empty.rows.reduce((s, r) => s + r.rateLeads, 0);
+  assert.equal(empty.team.closingPct, Math.round((rateBooked / rateLeads) * 100));
+  const trailBooked = empty.rows.reduce((s, r) => s + r.trailBooked, 0);
+  const trailLeads = empty.rows.reduce((s, r) => s + r.trailLeads, 0);
+  assert.equal(empty.team.trailPct, Math.round((trailBooked / trailLeads) * 100));
+});
+
+test('a hidden id left off a pinned roster is not counted', () => {
+  const calls = [
+    call({ type: 'Unbooked', at: T0, agent: 1, customer: 501, from: '8045555501' }),
+    call({ type: 'Booked', at: T0, agent: 2, customer: 502, from: '8045555502' }),
+  ];
+  const jobs = [
+    job({ at: T0, by: 1, customer: 501 }),
+    job({ at: T0, by: 2, customer: 502 }),
+  ];
+  const pinned = people({ csrIds: [1], hideIds: [], calls, jobs });
+  const hiddenOutside = people({ csrIds: [1], hideIds: [2], calls, jobs });
+  assert.deepEqual(hiddenOutside, pinned);
+  assert.deepEqual(hiddenOutside.rows.map((r) => r.n), ['Jordan Hale']);
+  assert.equal(hiddenOutside.team.leads, 1);
+  assert.equal(hiddenOutside.team.booked, 1);
+  assert.equal(hiddenOutside.team.bookedLeads, 1);
+});
+
 test('mergeFresh swaps only the window being refreshed', () => {
   const older = call({ type: 'Unbooked', at: T0 - DAY, agent: 1, customer: 1, from: '8045550010', id: 1 });
   const staleToday = call({ type: 'Unbooked', at: T0, agent: 1, customer: 1, from: '8045550011', id: 2 });

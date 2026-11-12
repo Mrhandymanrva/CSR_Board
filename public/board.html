@@ -324,8 +324,11 @@ function render(){
      jobs created and carries no rate of its own. See domain/rules.js. */
   const callsOk=D.callsOk && D.callsHandled!=null;
   const calls=callsOk?D.callsHandled:'\u2014';
-  const booked=D.csrs.reduce((s,c)=>s+c.booked,0);
-  const est=D.csrs.reduce((s,c)=>s+c.est,0);
+  /* Team total, not the visible rows. CSR_HIDE_EMPLOYEE_IDS stay in this
+     number — net, work jobs, estimate share, the footer — and off the grid.
+     Closing % and the 30-day total are the team row, from the same object. */
+  const booked=D.team?.booked??0;
+  const est=D.team?.est??0;
   const work=booked-est;
   const disp=D.bus.reduce((s,b)=>s+b.disp,0);
   const net=booked-disp, netWork=work-disp;

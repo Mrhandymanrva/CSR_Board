@@ -89,6 +89,14 @@ integrations create jobs under a service user, which would appear on the leaderb
 as a phantom CSR outbooking everyone. Verify during probe; use `CSR_EMPLOYEE_IDS`
 to pin the roster.
 
+**Hiding someone from the people grid.** `CSR_HIDE_EMPLOYEE_IDS` is optional and
+empty by default. Those employees are left out of the People rows only. Their jobs
+and leads stay in the team total, and the jobs-booked KPI, net, work-jobs line, and
+ticker all read that total. A hidden id is counted only if it would have been
+counted anyway. When `CSR_EMPLOYEE_IDS` is pinned, keep the hidden ids in that list
+too — an id on the hide list but not the roster is ignored, the same as any other
+employee who is not on the roster.
+
 **Tokens last ~15 minutes.** `src/st/client.js` caches and refreshes 60s early, and
 de-duplicates concurrent refreshes. Don't add a second token path.
 
@@ -120,6 +128,7 @@ measured on, so change them there and nowhere else.
 | CSR measurement | **People table: leads, closing %, jobs. No rank, no per-call rate, no target** | Owner-approved mockup D, 2026-11-12. Closing % is one lead per customer over 30 days (see `src/domain/leads.js`), not the deleted per-call rate |
 | CSR row contents | Leads, booked leads, closing % (today, still settling), trailing 30-day conversion, unbooked, not-a-lead, jobs booked, estimates, plus a team total | Jobs booked stay `createdById`. Lead owner is the person on the first call. Those two people can differ |
 | CSR row order | **Alphabetical**, from the server | Sorting by any metric is a ranking. Stable order also lets someone find their own line from across the room |
+| Hidden from the grid | `CSR_HIDE_EMPLOYEE_IDS` drops them from People rows. Team totals still include their leads and jobs | Empty by default. If the roster is pinned, the id has to stay in `CSR_EMPLOYEE_IDS` or it is not counted |
 | Missed calls | "Missed", never "lost". With RingCentral unset, ServiceTitan `Abandoned` is still the miss. With it set, a call is missed only when it was truly unanswered | Accepted in RingCentral and left Abandoned in ServiceTitan is "answered, no disposition", not a miss. In-hours forwards to Broadly / old Nonstop are "sent to Broadly". After hours stay off the demand tiles |
 | Missed → booked | Per CUSTOMER, over a trailing 7 days, settled calls only | Median recovery lag is 2.1 days, so today's misses cannot be scored today |
 | Business hours | Mon–Fri 08:00–15:59, configurable. Calls outside are counted, never scored | 97% of out-of-hours calls go unanswered because the office is shut |
@@ -246,7 +255,9 @@ was tried, and it just moves the break.
 
 The People table divides its height across however many CSRs exist, with density tiers
 at 7+ and 10+, plus a team total that does not grow with them. Above ~14 it stops
-being readable at distance; split the board by location instead.
+being readable at distance; split the board by location instead. `CSR_HIDE_EMPLOYEE_IDS`
+removes people from that grid without removing them from the team total. The row
+budget is the visible roster only.
 
 The People grid is the CSR name plus eight metrics (leads, booked, closing %,
 30-day conversion, unbooked, not a lead, jobs booked, estimates). That is the
