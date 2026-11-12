@@ -98,6 +98,8 @@ export const CALL = {
   type: (c) => CALL.inner(c).callType,
   agentId: (c) => CALL.inner(c).agent?.id ?? null,
   agentName: (c) => CALL.inner(c).agent?.name ?? null,
+  from: (c) => CALL.inner(c).from ?? null,
+  to: (c) => CALL.inner(c).to ?? null,
   reasonId: (c) => CALL.inner(c).reason?.id ?? null,
   customerId: (c) => CALL.inner(c).customer?.id ?? null,
   durationSecs: (c) => hhmmssToSecs(CALL.inner(c).duration),
@@ -122,7 +124,10 @@ function hhmmssToSecs(d) {
  *
  *   Booked    — lead call that produced a booking
  *   Unbooked  — lead call that did not              ← the miss
- *   Abandoned — caller hung up before an agent answered
+ *   Abandoned — ST's flag. Not the same as "nobody picked up": a CSR can
+ *               accept the call in RingCentral and never disposition it.
+ *               With RingCentral matching off, the board still treats this
+ *               as a miss. With matching on, see classifyCall.
  *   NotLead   — not a booking opportunity (vendor, wrong number, inquiry)
  *   Excused   — opportunity nobody could book for a legitimate reason
  *               (out of area, work we don't do) — kept out of the denominator

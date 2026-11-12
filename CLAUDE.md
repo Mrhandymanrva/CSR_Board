@@ -94,11 +94,19 @@ de-duplicates concurrent refreshes. Don't add a second token path.
 
 **Rate limit is 60 req/sec/app/tenant.** A 60-second poll is nowhere near it. The
 constraint that matters is pagination depth, not frequency — `stGetAll` caps at
-25 pages to stop a bad filter turning into an unbounded crawl.
+25 pages to stop a bad filter turning into an unbounded crawl. The 60-day lead
+corpus is the exception: it asks for up to 40 pages, once an hour, not every minute.
+
+**RingCentral is optional and server-side.** `CC_RC_LOG_URL` + `CC_RC_LOG_KEY`, or
+else `RC_CLIENT_ID` + `RC_CLIENT_SECRET` + `RC_JWT`. Unset means ServiceTitan-only
+missed calls, one log line, no crash. The browser still never sees a credential.
+Today's log refreshes on `RC_POLL_MS` (default 5 minutes). The recovery window
+refreshes hourly. Do not refetch 30 days of calls on the 60-second poll.
 
 ## Business rules — decided, not open
 
-All of these live in `src/domain/rules.js`. Changing them changes what CSRs are
+Demand, net, and job attribution live in `src/domain/rules.js`. The People
+table lives in `src/domain/leads.js`. Changing either changes what CSRs are
 measured on, so change them there and nowhere else.
 
 | Rule | Decision | Why |
@@ -109,10 +117,10 @@ measured on, so change them there and nowhere else.
 | On today's board | Live count, re-polled every cycle, Canceled excluded | Adds and cancellations are real; the TRUE net is what matters |
 | Estimates | Distinct `jobTypeId` values | Estimates are not immediately convertible revenue, and booking a free estimate is the easy way to inflate a booking rate |
 | Per-call booking rate | **DELETED 2026-07-29 — do not reinstate** | Intake-first business. See § What replaced booking rate |
-| CSR measurement | **Volume and effort only. No rate, no rank, no target** | A CSR gathering scope for an estimate is doing the job right |
-| CSR activity scope | **Both directions, any hour** — inbound, outbound, phone time | Counting inbound only showed AmyW as idle on a day she made 117 outbound calls. See § Two scopes |
+| CSR measurement | **People table: leads, closing %, jobs. No rank, no per-call rate, no target** | Owner-approved mockup D, 2026-11-12. Closing % is one lead per customer over 30 days (see `src/domain/leads.js`), not the deleted per-call rate |
+| CSR row contents | Leads, booked leads, closing % (today, still settling), trailing 30-day conversion, unbooked, not-a-lead, jobs booked, estimates, plus a team total | Jobs booked stay `createdById`. Lead owner is the person on the first call. Those two people can differ |
 | CSR row order | **Alphabetical**, from the server | Sorting by any metric is a ranking. Stable order also lets someone find their own line from across the room |
-| Missed calls | "Missed", never "lost" — they go to Nonstop.ai text-back | 1 in 5 books within a week. Calling them lost is factually wrong |
+| Missed calls | "Missed", never "lost". With RingCentral unset, ServiceTitan `Abandoned` is still the miss. With it set, a call is missed only when it was truly unanswered | Accepted in RingCentral and left Abandoned in ServiceTitan is "answered, no disposition", not a miss. In-hours forwards to Broadly / old Nonstop are "sent to Broadly". After hours stay off the demand tiles |
 | Missed → booked | Per CUSTOMER, over a trailing 7 days, settled calls only | Median recovery lag is 2.1 days, so today's misses cannot be scored today |
 | Business hours | Mon–Fri 08:00–15:59, configurable. Calls outside are counted, never scored | 97% of out-of-hours calls go unanswered because the office is shut |
 | Viewing a past day | Allowed, up to 30 days back. Header turns amber, clock is replaced by "Yesterday" / "N days ago" | A finished day must never be mistakable for the live board |
@@ -135,8 +143,10 @@ The short version, and the part that generalises:
   measured under an hour. It is structurally a first-call-close rate.
 - **Intake converts late.** Missed and unbooked callers came back days later. A
   same-day rate scores correct behaviour as failure.
-- So CSRs are measured on **volume and effort**, and conversion is measured at the
-  **customer level over a trailing window**, where delayed booking is visible.
+- So conversion on this board is measured at the **customer level over a trailing
+  window**, where delayed booking is visible. The People table is that measure
+  (closing % today, still settling, and a trailing 30-day rate). The per-call
+  rate stays deleted, and nobody is ranked.
 
 **If you are deploying this for a different franchise, re-run the analysis before
 trusting any of it.** A more dispatch-first operation may genuinely close on the
@@ -174,27 +184,28 @@ flagging it amber would train people to ignore the warning that actually matters
 
 ## Two scopes — do not unify them
 
-The board deliberately counts calls two different ways. Someone will eventually
+The board deliberately counts two different things. Someone will eventually
 notice and try to make them consistent. Don't.
 
 | | Scope | Why |
 |---|---|---|
 | **Demand** — KPI strip: calls in hours, reached a person, missed | Inbound, in business hours | Measures how reachable we were and who we missed. Out-of-hours calls are not a service failure — nobody is there |
-| **Effort** — CSR activity panel: in, out, avg call, phone time | Every call a person handled, both directions, any hour | Measures what a person actually did. If they were on the phone at 16:05 that is still work |
+| **Leads** — People table | One Booked/Unbooked episode per customer over 30 days, inbound or outbound, any hour | A callback is the same lead. NotLead and Excused are not leads. This is not the demand tally and not a per-call rate |
 
-Counting inbound only in the activity panel was a real defect: a CSR running 117
-outbound against 5 inbound over 14 days rendered as `0 calls`, as did anyone else
-doing follow-up. Outbound is the human half of the text-back loop that produces the
-recovery number — showing it as idleness contradicts the metric beside it.
-`phoneSecs` on a CSR row sums BOTH directions; do not re-derive phone time from
-`avgSecs × calls`, which is where the bug came from.
+Outbound calls belong in a lead when they are Booked or Unbooked. They still
+never enter the demand tiles. Jobs booked (`createdById`) are a third number:
+one lead can book several jobs, and the owner of the lead can be a different
+person from the one who typed the job.
 
-Outbound is effort only. It never enters a rate, a denominator, or a score.
+The old CSR activity columns (in, out, phone time) are gone. Do not put them
+back beside the lead table — that was a different question, and mixing it with
+closing % is how a ranking comes back.
 
-**A CSR showing zero calls is often correct.** Some enter jobs and rarely answer the
-phone. Before assuming an attribution bug, check the raw calls — `leadCall.agent.id`
-does equal the employee `id`. The `agentId` field on the employee record is **0 for
-every employee** and is not the join key; it looks like one and is not.
+**A CSR showing zero leads is often correct.** Some enter jobs and rarely take a
+Booked or Unbooked call. Before assuming an attribution bug, check the raw calls —
+`leadCall.agent.id` does equal the employee `id`. The `agentId` field on the
+employee record is **0 for every employee** and is not the join key; it looks like
+one and is not.
 
 ## Not available from ServiceTitan
 
@@ -215,9 +226,10 @@ clearly runs from the moment the call arrives, not from pickup. An answered call
 duration is therefore wait + talk, and nothing on the payload can separate them.
 
 Consequences, both deliberate:
-- The average is taken over ANSWERED calls only (`isAnswered` in rules.js: agent
-  present and not `Abandoned`). Averaging all inbound would fold hold time on
-  abandoned calls into a number captioned as conversation.
+- The average is taken over ANSWERED calls only (`isAnswered` in rules.js). With
+  RingCentral matching off that is an agent present and not `Abandoned`. With
+  matching on, a call RingCentral accepted counts too. Averaging all inbound
+  would fold hold time on calls nobody took into a number captioned as conversation.
 - It is labelled "avg call", never "talk time". Do not relabel it without a real
   talk-time field to back it up.
 
@@ -232,11 +244,11 @@ either right-hand panel will clip the bottom row.** If something new must go the
 take height from somewhere explicitly rather than shrinking type until it fits — that
 was tried, and it just moves the break.
 
-The leaderboard divides its height across however many CSRs exist, with density tiers
-at 7+ and 10+. Above ~14 it stops being readable at distance; split the board by
-location instead.
+The People table divides its height across however many CSRs exist, with density tiers
+at 7+ and 10+, plus a team total that does not grow with them. Above ~14 it stops
+being readable at distance; split the board by location instead.
 
-The leaderboard grid is seven tracks and should stay seven. Average call length was
-added as a stacked caption inside the existing Calls column (`.callcell`, same shape
-as `.estcell`) rather than as an eighth column, and the 16px it needed came off
-Estimates so the total is unchanged. An eighth track comes out of the CSR name.
+The People grid is the CSR name plus eight metrics (leads, booked, closing %,
+30-day conversion, unbooked, not a lead, jobs booked, estimates). That is the
+layout approved with mockup D. The right-hand panels and the footer chips are
+unchanged; do not steal height from them to fit another People column.

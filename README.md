@@ -79,6 +79,8 @@ Set these in the Railway service variables — not in the repo:
 | `BOARD_TOKEN` | `openssl rand -hex 24` |
 | `TZ` | **`America/New_York`** — required, see below |
 | `ESTIMATE_JOB_TYPE_IDS` `CSR_EMPLOYEE_IDS` | from `npm run probe` |
+| `CC_RC_LOG_URL` `CC_RC_LOG_KEY` | optional. Command Center export of the RingCentral account call log. Unset = ServiceTitan-only missed calls |
+| `RC_CLIENT_ID` `RC_CLIENT_SECRET` `RC_JWT` | optional. Direct RingCentral (JWT), used when the Command Center URL is unset. See `.env.example` |
 
 `TZ` is the one that will bite you. Railway runs UTC by default, which makes
 "today" roll over at 8pm and blanks the board mid-shift.
@@ -117,7 +119,10 @@ src/config.js          env + timezone-correct day boundaries
 src/st/client.js       OAuth, token cache, pagination, backoff
 src/st/endpoints.js    ← every endpoint path and param name, in one place
 src/st/probe.js        npm run probe
-src/domain/rules.js    ← every business rule, in one place
+src/domain/rules.js    ← demand rules (missed, answered, net), in one place
+src/domain/leads.js    ← lead episodes and the People rows
+src/domain/demand.js   ← in-hours tally, including the RingCentral join
+src/rc/                ← optional RingCentral / Command Center call log
 src/poll/index.js      poll loops + snapshot assembly
 src/server.js          Express
 public/board.html      the display (self-contained, no build step)
