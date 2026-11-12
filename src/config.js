@@ -48,6 +48,8 @@ export const cfg = {
     today: int('POLL_TODAY_MS', 60_000),
     refs: int('POLL_REFS_MS', 3_600_000),
     week: int('POLL_WEEK_MS', 3_600_000),
+    /* Today's RingCentral log. Not the 60s board poll — see src/rc/client.js. */
+    rcToday: int('RC_POLL_MS', 300_000),
   },
   rules: {
     /* BOOKING_TARGET_PCT and ESTIMATE_SHARE_CAP_PCT are gone. There is no

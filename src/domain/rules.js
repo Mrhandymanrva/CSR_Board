@@ -66,9 +66,11 @@ export function netState(n) {
       The Booked cohort re-books at 3%, which is the control proving the
       signal is real and not repeat-customer background noise.
 
-   So the board reports VOLUME AND EFFORT per CSR and no conversion rate.
-   Recovery is measured at the customer level over a trailing window, where
-   it is actually observable. See CLAUDE.md § What replaced booking rate. */
+   So there is still no per-call booking rate and no rank. Recovery stays a
+   trailing customer measure. The People table (owner-approved mockup D,
+   2026-11-12) is that same customer-level measure: one lead per customer
+   over 30 days, closing % with pending leads kept in. It is not the
+   deleted per-call rate. See src/domain/leads.js. */
 
 /**
  * Calls outside opening hours are not a service failure — nobody is there.
@@ -83,11 +85,23 @@ export function inBusinessHours(call) {
 }
 
 /**
- * MISSED, not lost. Abandoned calls hand off to the Nonstop.ai text-back
- * flow, which gathers details for a human follow-up. Never label these
- * "lost" on the board — 1 in 5 becomes a booking inside a week.
+ * MISSED, not lost. Never label these "lost" — 1 in 5 becomes a booking
+ * inside a week. They hand off to text-back, or, on overflow, to Broadly.
+ *
+ * With no RingCentral annotation this is the historical rule: inbound and
+ * ServiceTitan `Abandoned`. That flag is not "nobody picked up" — a CSR can
+ * accept the call and never disposition it — but without the call log it is
+ * the only signal we have, and the board must keep using it.
+ *
+ * When the poller has joined a RingCentral log it sets `call._rc` and this
+ * follows that classification instead: answered if any non-overflow leg was
+ * Accepted or an agent is present; missed only when the call was truly
+ * unanswered; overflow to Broadly/Nonstop is not a miss.
  */
-export const isMissed = (call) => isInbound(call) && isAbandonedCall(call);
+export const isMissed = (call) => {
+  if (call?._rc) return call._rc.missed === true;
+  return isInbound(call) && isAbandonedCall(call);
+};
 
 /** One row per caller per day: three retries by one person is one missed customer. */
 export const callerDayKey = (call) =>
@@ -137,9 +151,8 @@ export const isAbandonedCall = (call) => CALL.type(call) === CALL_TYPE.ABANDONED
 /**
  * An OPPORTUNITY is an inbound lead call somebody could have booked.
  * Booked + Unbooked only. NotLead is not an opportunity, Excused was not
- * winnable, and Abandoned never reached a CSR — charging an abandoned call
- * against the CSR who did not receive it is not a measure of their selling.
- * Abandonment is reported separately, as its own KPI.
+ * winnable. Abandoned is not an opportunity either — it is the missed tile.
+ * Abandoned is not proof that nobody answered; see isMissed.
  */
 export const isOpportunity = (call) =>
   isInbound(call) && [CALL_TYPE.BOOKED, CALL_TYPE.UNBOOKED].includes(CALL.type(call));
@@ -148,11 +161,20 @@ export const isOpportunity = (call) =>
 export const handledBy = (call) => CALL.agentId(call);
 
 /**
- * ANSWERED: somebody picked up. Agent present and not classified Abandoned.
- * Both conditions are checked because they are independently sourced and
- * agreed on every call observed (39 agents / 15 abandoned / 55 inbound).
+ * ANSWERED: somebody picked up.
+ *
+ * Without RingCentral: agent present and not Abandoned. Both were checked
+ * because they agreed on the calls this board was built against.
+ *
+ * With `call._rc` (matching on): RingCentral Accepted on a non-overflow leg,
+ * or a ServiceTitan agent, or a real disposition. Abandoned + Accepted is
+ * answered with no disposition — it is not a miss, and it counts in the
+ * average call length.
  */
-export const isAnswered = (call) => handledBy(call) != null && !isAbandonedCall(call);
+export const isAnswered = (call) => {
+  if (call?._rc) return call._rc.answered === true;
+  return handledBy(call) != null && !isAbandonedCall(call);
+};
 
 /**
  * AVERAGE CALL LENGTH — over answered calls only.
@@ -185,69 +207,10 @@ export function fmtSecs(s) {
    A dead helper is how a deleted metric comes back. If you need per-call
    conversion for analysis, compute it in a script, not here. */
 
-/**
- * Rolls per-CSR rows.
- *
- * Two different things are counted here and they must not be conflated:
- *   conv / opps → CALLS. The booking rate the CSR is ranked on.
- *   booked / est → JOBS created. A volume count, no rate attached.
- * A CSR can book more jobs than they took calls (callbacks, follow-up) —
- * that is real, not a bug, and it is why `booked` never feeds the rate.
- *
- * The `*ByEmployee` maps are empty when telecom is unavailable, in which
- * case opps is 0 and the board renders a dash. Never fall back to
- * booked/booked = 100%.
- */
-export function buildCsrRows(jobs, {
-  employees,
-  opportunitiesByEmployee = new Map(),
-  convertedByEmployee = new Map(),
-  callsByEmployee = new Map(),
-  outboundByEmployee = new Map(),
-  talkByEmployee = new Map(),
-}) {
-  const acc = new Map();
-  const want = cfg.rules.csrEmployeeIds;
-
-  for (const job of bookedToday(jobs)) {
-    const id = bookedBy(job);
-    if (id == null) continue;
-    if (want.length && !want.includes(id)) continue;
-    if (!acc.has(id)) acc.set(id, { id, booked: 0, est: 0 });
-    const row = acc.get(id);
-    row.booked++;
-    if (isEstimate(job)) row.est++;
-  }
-
-  // CSRs on shift who have not booked yet still belong on the board — as do
-  // CSRs who took calls without booking, which is exactly what the rate is for.
-  for (const id of want) if (!acc.has(id)) acc.set(id, { id, booked: 0, est: 0 });
-  if (!want.length) for (const m of [callsByEmployee, outboundByEmployee]) {
-    for (const id of m.keys()) if (!acc.has(id)) acc.set(id, { id, booked: 0, est: 0 });
-  }
-
-  return [...acc.values()].map((r) => {
-    const name = employees.get(r.id)?.name ?? `Employee ${r.id}`;
-    const talk = talkByEmployee.get(r.id);
-    const avg = talk?.n ? Math.round(talk.secs / talk.n) : null;
-    return {
-      n: name,
-      i: initials(name),
-      calls: callsByEmployee.get(r.id) ?? 0,
-      out: outboundByEmployee.get(r.id) ?? 0,
-      opps: opportunitiesByEmployee.get(r.id) ?? 0,
-      conv: convertedByEmployee.get(r.id) ?? 0,
-      avgSecs: avg,
-      avg: fmtSecs(avg),
-      // Total phone seconds, both directions — the honest effort number.
-      phoneSecs: talk?.secs ?? 0,
-      booked: r.booked,
-      est: r.est,
-      st: 'none',
-      stl: '',
-    };
-  });
-}
+/* People rows (leads, closing %, jobs booked) live in src/domain/leads.js.
+   `booked` on those rows is still jobs created today by createdById — a
+   volume count. It is not the lead's booked flag. One lead can book several
+   jobs, and the person who owns the lead can differ from createdById. */
 
 /** Groups jobs into the BU rows shown bottom-right. */
 export function buildBuRows(bookedJobs, dispatchJobs, businessUnits) {
@@ -296,7 +259,7 @@ function shortBuName(buName) {
   return out.replace(/\s*[-–—]\s*/g, ' — ').trim();
 }
 
-function initials(name) {
+export function initials(name) {
   const parts = String(name).trim().split(/\s+/);
   const a = parts[0]?.[0] ?? '?';
   const b = parts.length > 1 ? parts[parts.length - 1][0] : '';

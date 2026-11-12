@@ -67,67 +67,48 @@
   .ptitle{font-family:var(--cond);font-size:22px;letter-spacing:.18em;text-transform:uppercase;
     color:var(--ink-2);display:flex;align-items:center;gap:14px;flex:0 0 auto;white-space:nowrap}
   .ptitle .rule{flex:1;height:1px;background:var(--edge);min-width:12px}
-  .ptitle .note{color:var(--ink-3);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ptitle .note{color:var(--ink-3);letter-spacing:.04em;text-transform:none;font-size:16px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-  /* leaderboard */
-  /* name, in, out, avg call, phone-time bar, jobs, estimates. */
-  .grid6{display:grid;grid-template-columns:1fr 92px 92px 124px 244px 100px 120px;align-items:center;column-gap:8px}
-  .lbhead{font-family:var(--cond);font-size:18px;letter-spacing:.1em;text-transform:uppercase;
-    color:var(--ink-3);padding:12px 0 8px;border-bottom:1px solid var(--edge)}
-  .lbhead div:nth-child(n+2){text-align:center}
-  .lbhead div:nth-child(5){text-align:left;padding-left:4px}
+  /* People lead table: name + 8 metrics. Same panel the activity grid used. */
+  .gridL{display:grid;grid-template-columns:1.45fr 76px 84px 114px 122px 88px 98px 106px 96px;align-items:center;column-gap:4px}
+  .lbhead{font-family:var(--cond);font-size:15px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-3);padding:10px 0 8px;border-bottom:1px solid var(--edge);font-weight:500}
+  .lbhead div:nth-child(n+2){text-align:center;line-height:1.15}
+  .lbhead .subh{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#4E5A62;margin-top:2px;font-weight:400}
   .lbrow{padding:0;border-bottom:1px solid rgba(42,50,56,.5);overflow:hidden}
   #lbRows{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
   #lbRows .lbrow{flex:1 1 0;min-height:0}
-  .lbrow:last-child{border-bottom:none}
-
-  /* roster density — every CSR stays on screen, no scroll */
-  .d1 .badge{width:46px;height:46px;font-size:22px}
-  .d1 .nm{font-size:31px} .d1 .status{font-size:16px;margin-top:2px}
-  .d1 .num{font-size:35px} .d1 .rank{font-size:29px} .d1 .pct{font-size:32px}
-  .d1 .estcell b{font-size:35px} .d1 .estcell span{font-size:17px}
-  .d1 .callcell b{font-size:35px} .d1 .callcell span{font-size:16px}
-  .d1 .track{height:21px}
-  .d2 .badge{width:38px;height:38px;font-size:18px;border-radius:5px}
-  .d2 .nm{font-size:26px} .d2 .status{display:none}
-  .d2 .num{font-size:29px} .d2 .rank{font-size:24px} .d2 .pct{font-size:27px}
-  .d2 .estcell b{font-size:29px} .d2 .estcell span{font-size:15px}
-  .d2 .callcell b{font-size:29px} .d2 .callcell span{font-size:14px}
-  .d2 .track{height:17px} .d2 .who{gap:12px}
-  .rank{font-family:var(--cond);font-weight:700;font-size:36px;color:var(--ink-3);font-variant-numeric:tabular-nums}
-  .rank.lead{color:var(--red-hot)}
-  .who{display:flex;align-items:center;gap:16px}
-  .badge{width:54px;height:54px;border-radius:6px;display:grid;place-items:center;
-    font-family:var(--cond);font-weight:700;font-size:25px;background:var(--panel-2);border:1px solid var(--edge)}
-  .nm{font-family:var(--cond);font-weight:600;font-size:37px;line-height:1}
-  .status{font-family:var(--cond);font-size:18px;letter-spacing:.12em;text-transform:uppercase;
-    margin-top:4px;display:flex;align-items:center;gap:7px;color:var(--ink-3)}
-  .sdot{width:9px;height:9px;border-radius:50%;background:var(--ink-3)}
-  .s-oncall .sdot{background:var(--red-hot)} .s-oncall{color:#E9A0AC}
-  .s-avail .sdot{background:var(--green)} .s-avail{color:#8FD9B6}
-  .s-wrap .sdot{background:var(--amber)} .s-wrap{color:#E5C083}
-  .num{font-family:var(--cond);font-weight:600;font-size:42px;text-align:center;font-variant-numeric:tabular-nums}
+  .who{display:flex;align-items:center;gap:14px;min-width:0}
+  .badge{width:44px;height:44px;border-radius:6px;display:grid;place-items:center;flex:0 0 44px;
+    font-family:var(--cond);font-weight:700;font-size:18px;background:var(--panel-2);border:1px solid var(--edge)}
+  .nm{font-family:var(--cond);font-weight:600;font-size:28px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nsub{font-family:var(--cond);font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-top:3px}
+  .num{font-family:var(--cond);font-weight:600;font-size:30px;text-align:center;font-variant-numeric:tabular-nums}
   .num.dim{color:var(--ink-2);font-weight:500}
   .num.work{color:var(--green)}
-  .estcell{text-align:center;font-family:var(--cond);font-variant-numeric:tabular-nums}
-  .estcell b{font-weight:600;font-size:42px}
-  .estcell span{display:block;font-size:20px;letter-spacing:.06em;margin-top:-2px}
-  /* Calls + average call length, stacked. Sharing the Calls column keeps the
-     grid at seven tracks — an eighth would eat the CSR name. See CLAUDE.md. */
-  .callcell{text-align:center;font-family:var(--cond);font-variant-numeric:tabular-nums;color:var(--ink-2)}
-  .callcell b{font-weight:500;font-size:42px}
-  .callcell span{display:block;font-size:19px;letter-spacing:.04em;margin-top:-2px;color:var(--ink-3);white-space:nowrap}
-  .est-ok span{color:var(--ink-3)} .est-warn b,.est-warn span{color:var(--amber)}
-  .est-bad b,.est-bad span{color:var(--red-hot)}
-  .ratewrap{display:flex;align-items:center;gap:14px;padding-left:4px}
-  .track{flex:1;height:24px;background:#12171A;border:1px solid var(--edge);border-radius:3px;position:relative;overflow:hidden}
-  .fill{position:absolute;inset:1px auto 1px 1px;border-radius:2px;background:linear-gradient(90deg,#8E0B21,var(--red-hot))}
-  .fill.good{background:linear-gradient(90deg,#177451,var(--green))}
-  /* Workload, not performance — deliberately colourless. */
-  .fill.neutral{background:linear-gradient(90deg,#2F3A42,#55656F)}
-  .pct.dim{color:var(--ink-2);font-weight:600}
-  .goal{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);opacity:.7}
-  .pct{font-family:var(--cond);font-weight:700;font-size:38px;width:104px;text-align:right;font-variant-numeric:tabular-nums}
+  .num.good,.pctcell b.good{color:var(--green)}
+  .num.mid,.pctcell b.mid{color:var(--amber)}
+  .num.bad,.pctcell b.bad{color:var(--red-hot)}
+  .pctcell b.dim{color:var(--ink-2);font-weight:500}
+  .pctcell{text-align:center;font-family:var(--cond);font-variant-numeric:tabular-nums}
+  .pctcell b{font-weight:700;font-size:30px;display:block;line-height:1}
+  .pctcell span{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-top:2px;font-weight:500}
+  .teamrow{border-top:2px solid var(--edge);border-bottom:none;flex:0 0 auto !important;padding:10px 0 2px}
+  .teamrow .nm{font-size:18px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);font-weight:500}
+  .teamrow .num,.teamrow .pctcell b{font-weight:700;font-size:28px}
+
+  /* roster density — every CSR stays on screen, no scroll */
+  .d1 .badge{width:38px;height:38px;font-size:16px}
+  .d1 .nm{font-size:24px} .d1 .nsub{font-size:12px}
+  .d1 .num{font-size:26px} .d1 .pctcell b{font-size:26px}
+  .d2 .badge{width:32px;height:32px;font-size:14px;border-radius:5px}
+  .d2 .nm{font-size:20px} .d2 .nsub{display:none}
+  .d2 .num{font-size:22px} .d2 .pctcell b{font-size:22px} .d2 .who{gap:10px}
+
+  .example{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:8;
+    font-family:var(--cond);font-weight:700;letter-spacing:.22em;text-transform:uppercase;
+    font-size:15px;color:#1a1208;background:var(--amber);padding:5px 18px;border-radius:2px}
 
   /* net book — signature panel */
   .netpanel{flex:0 0 336px;position:relative;overflow:hidden}
@@ -243,11 +224,18 @@
   <main class="A" id="mainA">
     <div class="col">
       <div class="panel" style="flex:1">
-        <div class="ptitle">CSR Activity <span class="rule"></span>
-          <span class="note">Volume and effort · calls both directions, any hour · no conversion rate</span></div>
-        <div class="grid6 lbhead">
-          <div>CSR</div><div>In</div><div>Out</div><div>Avg call</div><div>On the phone</div>
-          <div>Jobs</div><div>Estimates</div>
+        <div class="ptitle">People <span class="rule"></span>
+          <span class="note" id="peopleNote">Leads are one per customer over 30 days, including a callback. Closing % is today and still settling. 30-day conversion is the trailing rate.</span></div>
+        <div class="gridL lbhead">
+          <div>CSR</div>
+          <div>Leads</div>
+          <div>Booked</div>
+          <div>Closing %<span class="subh">today · settling</span></div>
+          <div>30-day conv. %<span class="subh">trailing 30 days</span></div>
+          <div>Unbooked</div>
+          <div>Not a lead</div>
+          <div>Jobs booked</div>
+          <div>Estimates</div>
         </div>
         <div id="lbRows"></div>
       </div>
@@ -360,41 +348,52 @@ function render(){
         ?rec.recovered+' of '+rec.scored+' missed callers booked within '+rec.days+' days'
         :'Recovery still loading'},
     {l:D.isToday?'Missed today':'Missed',v:callsOk?missed:'—',
-      s:'Handed to text-back'+(D.isToday&&rec&&rec.pending?' · '+rec.pending+' still in the window':''),
+      s:(()=>{
+        /* Same line as before when RingCentral matching is off. The new
+           categories only appear once a count is actually there. */
+        let s='Handed to text-back';
+        if(D.rcMatching && D.broadly) s+=' · '+D.broadly+' sent to Broadly';
+        if(D.rcMatching && D.answeredNoDisposition) s+=' · '+D.answeredNoDisposition+' answered, no disposition';
+        if(D.isToday && rec && rec.pending) s+=' · '+rec.pending+' still in the window';
+        return s;
+      })(),
       warn:missed>0},
     {l:'Jobs booked',v:booked,s:'<span class="warn">'+est+' estimate'+(est===1?'':'s')+'</span> · '+work+' work jobs'},
     {l:'Estimate share',v:estShare.toFixed(0)+'%',s:est+' of '+booked+' jobs'+(D.isToday?' entered today':'')}
   ].map(k=>`<div class="kpi ${k.hero?'hero':''}"><div class="lbl">${k.l}</div>
       <div class="val${k.warn?' warn':''}">${k.v}</div><div class="sub">${k.s}</div></div>`).join('');
 
-  /* CSR activity — density scales so every CSR fits without scrolling.
+  /* People — density scales so every CSR fits without scrolling.
      Order comes from the server and is ALPHABETICAL, deliberately: sorting by
      any metric is a ranking, and a stable order lets someone find their own
-     line from across the room. Do not re-sort here. */
-  const ranked=D.csrs;
+     line from across the room. Do not re-sort here. The team row is not a CSR. */
+  const note=$('peopleNote');
+  if(note) note.textContent = D.leadsReady===false
+    ? 'Lead history is loading. Jobs booked are live.'
+    : 'Leads are one per customer over 30 days, including a callback. Closing % is today and still settling. 30-day conversion is the trailing rate.';
+  const ranked=D.csrs||[];
   const rows=$('lbRows');
   rows.className = ranked.length>9 ? 'd2' : ranked.length>6 ? 'd1' : '';
-  /* Phone time comes from the server and counts BOTH directions. Deriving it
-     from avg x inbound made the outbound-heavy CSRs read as idle. */
-  const mins=c=>Math.round((c.phoneSecs??0)/60);
-  const maxMins=Math.max(1,...ranked.map(mins));
-  rows.innerHTML=ranked.map(c=>{
-    /* The bar is time on the phone against the busiest person today. It is a
-       workload picture, not a score — no target marker, no pass/fail colour. */
-    const m=mins(c), w=m?Math.max(m/maxMins*100,2):0;
-    return `<div class="grid6 lbrow">
-      <div class="who"><div class="badge">${c.i}</div>
-        <div><div class="nm">${c.n}</div><div class="status s-${c.st}"><span class="sdot"></span>${c.stl}</div></div></div>
-      <div class="num">${c.calls}</div>
-      <div class="num dim">${c.out}</div>
-      <div class="num dim">${c.avg}</div>
-      <div class="ratewrap">
-        <div class="track"><div class="fill neutral" style="width:calc(${w}% - 2px)"></div></div>
-        <div class="pct dim">${m?m+'m':'—'}</div>
-      </div>
-      <div class="num work">${c.booked}</div>
-      <div class="num dim">${c.est}</div></div>`;
-  }).join('');
+  const dash=v=>v==null?'\u2014':v;
+  const pctCls=p=>p==null||p===0?'dim':p>=65?'good':p>=50?'mid':'bad';
+  const pctCell=(p,sub)=>`<div class="pctcell"><b class="${pctCls(p)}">${p==null?'\u2014':p+'%'}</b><span>${sub}</span></div>`;
+  const who=(c,team)=>team
+    ? `<div class="who"><div class="nm">Team</div></div>`
+    : `<div class="who"><div class="badge">${esc(c.i)}</div><div><div class="nm">${esc(c.n)}</div><div class="nsub">First-call owner</div></div></div>`;
+  const trailSub=(row,team)=>team && row.trailBooked!=null && row.trailLeads
+    ? row.trailBooked+' of '+row.trailLeads : 'trailing';
+  const line=(c,team)=>`<div class="gridL lbrow${team?' teamrow':''}">
+      ${who(c,team)}
+      <div class="num">${dash(c.leads)}</div>
+      <div class="num">${dash(c.bookedLeads)}</div>
+      ${pctCell(c.closingPct,'settling')}
+      ${pctCell(c.trailPct,trailSub(c,team))}
+      <div class="num dim">${dash(c.unbooked)}</div>
+      <div class="num dim">${dash(c.notLead)}</div>
+      <div class="num work">${c.booked??0}</div>
+      <div class="num dim">${c.est??0}</div></div>`;
+  const team=D.team;
+  rows.innerHTML=ranked.map(c=>line(c,false)).join('')+(team?line(team,true):'');
 
   /* Net book panel */
   const state = net<0 ? 'neg' : net>0 ? 'pos' : 'even';
@@ -460,24 +459,25 @@ function render(){
   const f7=$('f7'); f7.textContent=sgn(wk); f7.className='v '+(wk<0?'down':'up');
   $('tick').innerHTML=D.ticker;
 
-  /* layout B cards */
-  /* Card layout mirrors the table: calls answered is the big number, no rate
-     and no "top" highlight — there is nothing here to come first at. */
-  $('cards').innerHTML=ranked.map(c=>{
-    const m=mins(c);
-    return `<div class="card">
-      <div class="cardhead"><div class="badge">${c.i}</div>
-        <div><div class="nm">${c.n}</div><div class="status s-${c.st}"><span class="sdot"></span>${c.stl}</div></div></div>
-      <div class="cardbig">${c.calls+c.out}<small> calls</small></div>
-      <div class="track" style="margin-top:12px"><div class="fill neutral"
-        style="width:calc(${m?Math.max(m/maxMins*100,2):0}% - 2px)"></div></div>
+  /* layout B — same lead numbers, still hidden unless something shows #mainB. */
+  $('cards').innerHTML=ranked.map(c=>`<div class="card">
+      <div class="cardhead"><div class="badge">${esc(c.i)}</div>
+        <div><div class="nm">${esc(c.n)}</div><div class="nsub">First-call owner</div></div></div>
+      <div class="cardbig">${dash(c.leads)}<small> leads</small></div>
       <div class="cardmeta">
-        <div class="cm"><div class="lbl">In / out</div><div class="v">${c.calls}/${c.out}</div></div>
-        <div class="cm"><div class="lbl">On phone</div><div class="v">${m?m+'m':'—'}</div></div>
-        <div class="cm"><div class="lbl">Jobs</div><div class="v">${c.booked}</div></div>
-        <div class="cm"><div class="lbl">Est.</div><div class="v" style="color:var(--ink-2)">${c.est}</div></div>
-      </div></div>`;
-  }).join('');
+        <div class="cm"><div class="lbl">Booked</div><div class="v">${dash(c.bookedLeads)}</div></div>
+        <div class="cm"><div class="lbl">Closing</div><div class="v">${c.closingPct==null?'\u2014':c.closingPct+'%'}</div></div>
+        <div class="cm"><div class="lbl">Jobs</div><div class="v">${c.booked??0}</div></div>
+        <div class="cm"><div class="lbl">Est.</div><div class="v" style="color:var(--ink-2)">${c.est??0}</div></div>
+      </div></div>`).join('');
+
+  document.documentElement.dataset.ready='1';
+  if(D.example && !document.getElementById('exampleBanner')){
+    const b=document.createElement('div');
+    b.id='exampleBanner'; b.className='example';
+    b.textContent='Example data — not live figures';
+    stage.appendChild(b);
+  }
 }
 
 /* The clock ticks only while looking at today. On a past day it is replaced by

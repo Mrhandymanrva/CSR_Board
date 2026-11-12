@@ -2,6 +2,10 @@ import { cfg, localDayWindow, localDayStart, dayLabel, localTimeLabel, localDate
 import { stGetAll } from '../st/client.js';
 import { EP, PARAM, CALL } from '../st/endpoints.js';
 import * as R from '../domain/rules.js';
+import { annotateInbound, reduceCalls } from '../domain/demand.js';
+import { mergeFresh, peopleForWindow } from '../domain/leads.js';
+import { indexRcRecords } from '../rc/match.js';
+import { loadCallLog, logRcModeOnce, overflowNumbers } from '../rc/client.js';
 
 /* ── State ─────────────────────────────────────────────────────────
    Everything lives in memory. No database: jobs carry their own dates,
@@ -13,6 +17,7 @@ const state = {
   today: null,
   week: [],
   recovery: null,          // trailing missed-call recovery; see pollRecovery
+  history: null,           // ~60 days of calls + jobs, hourly. Not the 60s poll.
   openingDispatch: null,   // dispatch count at first poll of the local day
   openingDay: null,
   openingLabel: null,      // local time of that first poll — see churn.since
@@ -57,10 +62,29 @@ async function jobsScheduledOn(offsetDays) {
   });
 }
 
+function callsUnavailable() {
+  return {
+    ok: false, handled: null, outbound: null, afterHours: null,
+    missedCallers: null, reachedCallers: null, opportunities: null, converted: null,
+    callsBy: new Map(), outBy: new Map(), oppsBy: new Map(), convBy: new Map(), talkBy: new Map(),
+    avgCallSecs: null, abandoned: null, abandonPct: null, asaSecs: null,
+    rcMatching: false, broadly: null, answeredNoDisposition: null, broadlyAfterHours: null,
+    stAbandoned: null, rawCalls: [],
+  };
+}
+
 /* ── Calls (best effort) ──────────────────────────────────────────
    Telecom provisioning varies. If this endpoint fails the board still
-   renders: calls/opportunities show as unavailable and booking rate
-   shows a dash. A missing denominator must never be faked. */
+   renders: calls show as unavailable. A missing denominator must never
+   be faked.
+
+   DEMAND (the KPI strip) is inbound, in business hours. Out-of-hours calls
+   are counted and never scored — nobody is there.
+
+   RingCentral, when configured, is joined here and nowhere else. The join
+   is cached (5 minutes for today, hourly for a finished day). It is not
+   refetched on every 60-second poll. With the env vars unset, `loadCallLog`
+   returns null and reduceCalls keeps the ServiceTitan-only rules. */
 async function pollCalls(offsetDays = 0) {
   const w = localDayWindow(offsetDays);
   const P = PARAM.calls;
@@ -69,102 +93,76 @@ async function pollCalls(offsetDays = 0) {
       [P.createdOnOrAfter]: w.start,
       [P.createdBefore]: w.end,
     });
-
-    /* TWO SCOPES, deliberately different — do not unify them.
-
-       DEMAND (the KPI strip) is inbound, in-hours: how reachable were we, and
-       how many customers did we miss. Out-of-hours calls are excluded because
-       nobody is there, so they are not a service failure.
-
-       EFFORT (the CSR activity panel) is every call a person handled, inbound
-       or outbound, any hour. Counting inbound only made the CSRs who do the
-       follow-up calling look idle — AmyW ran 117 outbound against 5 inbound
-       over 14 days and showed as 0. Outbound IS the human half of the
-       text-back loop the recovery number depends on. */
-    const inbound = raw.filter(R.isInbound);
-    const calls = inbound.filter(R.inBusinessHours);
-    const afterHours = inbound.length - calls.length;
-
-    const callsBy = new Map();     // inbound answered, per CSR
-    const outBy = new Map();       // outbound placed, per CSR
-    const oppsBy = new Map();
-    const convBy = new Map();
-    const talkBy = new Map();      // phone seconds, BOTH directions
-    const bump = (m, k) => k != null && m.set(k, (m.get(k) || 0) + 1);
-    const addSecs = (k, secs) => {
-      if (k == null || !Number.isFinite(secs) || secs <= 0) return;
-      const t = talkBy.get(k) ?? { secs: 0, n: 0 };
-      t.secs += secs; t.n++;
-      talkBy.set(k, t);
-    };
-
-    // Outbound: effort only. Never scored, never in a rate, any hour.
-    for (const c of raw) {
-      if (R.isInbound(c)) continue;
-      const emp = R.handledBy(c) ?? CALL.inner(c).createdBy?.id ?? null;
-      bump(outBy, emp);
-      addSecs(emp, CALL.durationSecs(c));
-    }
-
-    let abandoned = 0;
-    let opportunities = 0;
-    let converted = 0;
-
-    // One missed CUSTOMER, not one missed call: a caller who tries three times
-    // and gives up is one person we failed, and 36% of missed calls are retries.
-    const missedCallers = new Set();
-    const reachedCallers = new Set();
-
-    for (const c of calls) {
-      const emp = R.handledBy(c);
-      bump(callsBy, emp);
-      if (R.isAbandonedCall(c)) { abandoned++; missedCallers.add(R.callerDayKey(c)); }
-      else reachedCallers.add(R.callerDayKey(c));
-
-      // Call length accrues only for calls somebody actually answered —
-      // abandoned calls carry a duration too, and it is hold time. See rules.js.
-      if (R.isAnswered(c)) addSecs(emp, CALL.durationSecs(c));
-      if (R.isOpportunity(c)) {
-        opportunities++;
-        bump(oppsBy, emp);
-        if (R.isBookedCall(c)) { converted++; bump(convBy, emp); }
-      }
-    }
-
-    // A caller who eventually got through is not a missed customer.
-    for (const k of reachedCallers) missedCallers.delete(k);
-
-    return {
-      ok: true,
-      handled: calls.length,
-      outbound: raw.length - inbound.length,
-      afterHours,
-      missedCallers: missedCallers.size,
-      reachedCallers: reachedCallers.size,
-      opportunities,
-      converted,
-      callsBy,
-      outBy,
-      oppsBy,
-      convBy,
-      talkBy,
-      avgCallSecs: R.avgCallSecs(calls),
-      abandoned,
-      abandonPct: calls.length ? (abandoned / calls.length) * 100 : 0,
-      // Speed-to-answer is NOT in the telecom payload on this tenant — there is
-      // no wait/queue/answer field on the record. Reporting it would mean
-      // inventing it, so it stays null and the board omits it. See CLAUDE.md.
-      asaSecs: null,
-    };
+    const ttl = offsetDays === 0 ? cfg.poll.rcToday : cfg.poll.week;
+    const records = await loadCallLog(w.start, w.end, ttl, { maxPages: offsetDays === 0 ? 4 : 8 });
+    if (records != null) annotateInbound(raw, indexRcRecords(records), overflowNumbers());
+    return reduceCalls(raw, { rcEnabled: records != null });
   } catch (e) {
     console.warn('[poll] calls unavailable:', e.message);
-    return {
-      ok: false, handled: null, outbound: null, afterHours: null,
-      missedCallers: null, reachedCallers: null, opportunities: null, converted: null,
-      callsBy: new Map(), outBy: new Map(), oppsBy: new Map(), convBy: new Map(), talkBy: new Map(),
-      avgCallSecs: null, abandoned: null, abandonPct: null, asaSecs: null,
-    };
+    return callsUnavailable();
   }
+}
+
+/* ── Lead corpus (hourly) ─────────────────────────────────────────
+   Episodes look back 30 days, and the board can open a day 30 days ago,
+   so the corpus is 60 local days. Refreshed with the week poll, never with
+   the 60-second today poll — today's slice is spliced in from the calls
+   and jobs that poll already fetched. pageSize 500, 40 pages: 20k rows,
+   sequential, once an hour. The default 25-page cap would clip a busy
+   60-day window; this override is only for the backfill. */
+const HISTORY_DAYS = 60;
+
+export async function pollHistory() {
+  const w = {
+    start: localDayStart(-HISTORY_DAYS).toISOString(),
+    end: localDayStart(1).toISOString(),
+  };
+  const [calls, jobs] = await Promise.all([
+    stGetAll(EP.calls.module, EP.calls.path, {
+      [PARAM.calls.createdOnOrAfter]: w.start,
+      [PARAM.calls.createdBefore]: w.end,
+    }, { pageSize: 500, maxPages: 40 }),
+    stGetAll(EP.jobs.module, EP.jobs.path, {
+      [PARAM.jobs.createdOnOrAfter]: w.start,
+      [PARAM.jobs.createdBefore]: w.end,
+    }, { pageSize: 500, maxPages: 40 }),
+  ]);
+  state.history = { calls, jobs, at: Date.now() };
+  if (state.today) attachPeople(state.today, 0);
+}
+
+function jobTime(job) {
+  const t = Date.parse(job?.createdOn ?? '');
+  return Number.isFinite(t) ? t : null;
+}
+
+function attachPeople(day, offsetDays) {
+  const dayStart = localDayStart(offsetDays).getTime();
+  const dayEnd = localDayStart(offsetDays + 1).getTime();
+  const trailStart = localDayStart(offsetDays - 29).getTime();
+  const ready = Boolean(state.history?.calls && state.history?.jobs);
+  let calls = day.rawCalls ?? [];
+  let jobs = day.createdJobs ?? [];
+  if (ready) {
+    // A failed call fetch must not wipe that day's rows out of the corpus.
+    calls = day.calls?.ok
+      ? mergeFresh(state.history.calls, day.rawCalls ?? [], dayStart, dayEnd, (c) => CALL.receivedAt(c))
+      : state.history.calls;
+    jobs = Array.isArray(day.createdJobs)
+      ? mergeFresh(state.history.jobs, day.createdJobs, dayStart, dayEnd, jobTime)
+      : state.history.jobs;
+    if (offsetDays !== 0 && Array.isArray(state.today?.createdJobs)) {
+      const t0 = localDayStart(0).getTime();
+      const t1 = localDayStart(1).getTime();
+      jobs = mergeFresh(jobs, state.today.createdJobs, t0, t1, jobTime);
+    }
+  }
+  day.people = peopleForWindow({
+    calls, jobs,
+    employees: state.refs.employees,
+    dayStart, dayEnd, trailStart, trailEnd: dayEnd,
+    leadsReady: ready,
+  });
 }
 
 /* ── Missed-call recovery (hourly) ────────────────────────────────
@@ -198,6 +196,12 @@ export async function pollRecovery() {
     if (!jobsByCustomer.has(j.customerId)) jobsByCustomer.set(j.customerId, []);
     jobsByCustomer.get(j.customerId).push(Date.parse(j.createdOn));
   }
+
+  /* Same ServiceTitan window as before. RingCentral for that window is an
+     hourly fetch (POLL_WEEK_MS), not a per-minute one. Unset credentials
+     leave every call unclassified and isMissed on the ServiceTitan flag. */
+  const records = await loadCallLog(w.start, w.end, cfg.poll.week, { maxPages: 20 });
+  if (records != null) annotateInbound(calls, indexRcRecords(records), overflowNumbers());
 
   const missed = calls.filter((c) => R.isMissed(c) && R.inBusinessHours(c));
   state.recovery = { ...R.recovery(missed, jobsByCustomer), days: cfg.rules.recoveryDays };
@@ -238,10 +242,12 @@ async function fetchDay(offsetDays) {
     jobsScheduledOn(offsetDays),
     pollCalls(offsetDays),
   ]);
-  return {
+  const day = {
     booked: R.bookedToday(created),
     dispatch: scheduled.filter(R.onTodaysBoard),
     calls,
+    rawCalls: calls.rawCalls ?? [],
+    createdJobs: created,
     /* Churn is a LIVE measure: it compares the board now against the first
        poll of today. A finished day has no equivalent — the "opened at"
        figure was never recorded for it — so it is omitted rather than
@@ -249,14 +255,16 @@ async function fetchDay(offsetDays) {
        mean something else entirely. */
     churn: null,
   };
+  attachPeople(day, offsetDays);
+  return day;
 }
 
 export async function getDay(offsetDays) {
   if (offsetDays === 0) return state.today;
   const hit = dayCache.get(offsetDays);
-  if (hit && Date.now() - hit.at < DAY_TTL_MS) return hit.day;
+  if (hit && Date.now() - hit.at < DAY_TTL_MS && hit.day.people?.ready) return hit.day;
   const day = await fetchDay(offsetDays);
-  dayCache.set(offsetDays, { at: Date.now(), day });
+  if (day.people?.ready) dayCache.set(offsetDays, { at: Date.now(), day });
   return day;
 }
 
@@ -289,6 +297,8 @@ export async function pollToday() {
     booked,
     dispatch,
     calls,
+    rawCalls: calls.rawCalls ?? [],
+    createdJobs: created,
     churn: {
       open: opened,
       added: Math.max(drift + cancelledToday, 0),
@@ -296,6 +306,7 @@ export async function pollToday() {
       since: state.openingLabel ?? localTimeLabel(),
     },
   };
+  attachPeople(state.today, 0);
   state.lastOk = Date.now();
   state.lastError = null;
 }
@@ -308,17 +319,10 @@ export function snapshot(day = state.today, offsetDays = 0) {
 
   const { booked, dispatch, calls, churn } = day;
   const isToday = offsetDays === 0;
-  const csrs = R.buildCsrRows(booked, {
-    employees: state.refs.employees,
-    opportunitiesByEmployee: calls.oppsBy,
-    convertedByEmployee: calls.convBy,
-    callsByEmployee: calls.callsBy,
-    outboundByEmployee: calls.outBy,
-    talkByEmployee: calls.talkBy,
-  // Alphabetical. Sorting by any metric reinstates the ranking that was
-  // removed, and a stable order lets a CSR find their own line from across
-  // the room instead of hunting for it after every poll.
-  }).sort((a, b) => a.n.localeCompare(b.n));
+  /* Alphabetical, from buildPeopleRows. Sorting by any metric is a ranking.
+     `booked` on each row is jobs created today (createdById), not leads. */
+  const people = day.people ?? { ready: false, rows: [], team: null };
+  const csrs = people.rows ?? [];
 
   const bus = R.buildBuRows(booked, dispatch, state.refs.businessUnits);
 
@@ -357,9 +361,14 @@ export function snapshot(day = state.today, offsetDays = 0) {
     abandon: calls.abandonPct == null ? '—' : `${calls.abandonPct.toFixed(0)}%`,
     callsOk: calls.ok,
     recovery: state.recovery,
+    rcMatching: calls.rcMatching === true,
+    broadly: calls.broadly ?? null,
+    answeredNoDisposition: calls.answeredNoDisposition ?? null,
+    leadsReady: people.ready === true,
 
     churn,
     csrs,
+    team: people.team,
     bus,
     week: state.week,
     ticker: buildTicker({ csrs, bus, week: state.week, churn, calls, recovery: state.recovery }),
@@ -413,17 +422,20 @@ export function start() {
   const today = guard('today', pollToday);
   const week = guard('week', pollWeek);
   const recovery = guard('recovery', pollRecovery);
+  const history = guard('history', pollHistory);
+
+  logRcModeOnce();
 
   (async () => {
     await refs();
     await today();
-    await week();
-    await recovery();
+    await Promise.all([week(), history(), recovery()]);
   })();
 
   setInterval(refs, cfg.poll.refs);
   setInterval(today, cfg.poll.today);
   setInterval(week, cfg.poll.week);
+  setInterval(history, cfg.poll.week);
   setInterval(recovery, cfg.poll.week);
 }
 
