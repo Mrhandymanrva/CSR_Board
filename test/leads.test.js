@@ -444,6 +444,92 @@ test('a hidden id left off a pinned roster is not counted', () => {
   assert.equal(hiddenOutside.team.bookedLeads, 1);
 });
 
+test('inbound is answered external calls; outbound is external calls placed', () => {
+  const answeredNoDisp = call({ type: 'Abandoned', at: T0, agent: 1, from: '8045556001' });
+  answeredNoDisp._rc = { answered: true, missed: false, broadly: false };
+  const missed = call({ type: 'Abandoned', at: T0, from: '8045556002' });
+  missed._rc = { answered: false, missed: true, broadly: false };
+  const voicemail = call({ type: 'Abandoned', at: T0, from: '8045556003' });
+  voicemail._rc = { answered: false, missed: true, broadly: false };
+  const noAgent = call({ type: 'Booked', at: T0, from: '8045556004' });
+  noAgent._rc = { answered: true, missed: false, broadly: false };
+  const { rows, team } = people({
+    csrIds: [1, 2, 3],
+    calls: [
+      call({ type: 'Booked', at: T0, agent: 1, customer: 601, from: '8045556101' }),
+      call({ type: 'NotLead', at: T0 + 1000, agent: 1, from: '8045556102' }),
+      answeredNoDisp,
+      missed,
+      voicemail,
+      noAgent,
+      call({ type: 'Unbooked', at: T0, agent: 1, from: '101' }),
+      call({ type: 'Unbooked', at: T0 - 2 * DAY, agent: 1, customer: 609, from: '8045556109' }),
+      call({ type: 'Unbooked', at: T0, agent: 2, customer: 602, outbound: true, to: '8045556202' }),
+      call({ type: 'Excused', at: T0 + 2000, agent: 2, outbound: true, to: '8045556203' }),
+      call({ type: 'Unbooked', at: T0, agent: 2, outbound: true, to: '101' }),
+      call({ type: 'Unbooked', at: T0, agent: 2, outbound: true, from: '8045550000', to: '1002' }),
+      call({ type: 'Booked', at: T0, agent: 3, customer: 603, from: '8045556303' }),
+    ],
+  });
+  const jordan = rows.find((r) => r.n === 'Jordan Hale');
+  const riley = rows.find((r) => r.n === 'Riley Chen');
+  const casey = rows.find((r) => r.n === 'Casey Morgan');
+  assert.equal(jordan.inbound, 3);
+  assert.equal(jordan.outbound, 0);
+  assert.equal(jordan.notLead, 1);
+  assert.equal(riley.inbound, 0);
+  assert.equal(riley.outbound, 2);
+  assert.equal(casey.inbound, 1);
+  assert.equal(casey.outbound, 0);
+  assert.equal(team.inbound, 4);
+  assert.equal(team.outbound, 2);
+  assert.equal(team.inbound, rows.reduce((s, r) => s + r.inbound, 0));
+  assert.equal(team.outbound, rows.reduce((s, r) => s + r.outbound, 0));
+});
+
+test('hidden CSRs stay in the inbound and outbound team totals', () => {
+  const { rows, team } = people({
+    csrIds: [1, 2],
+    hideIds: [2],
+    calls: [
+      call({ type: 'Booked', at: T0, agent: 1, from: '8045557001' }),
+      call({ type: 'Unbooked', at: T0, agent: 2, outbound: true, to: '8045557002' }),
+    ],
+  });
+  assert.deepEqual(rows.map((r) => r.n), ['Jordan Hale']);
+  assert.equal(rows[0].inbound, 1);
+  assert.equal(rows[0].outbound, 0);
+  assert.equal(team.inbound, 1);
+  assert.equal(team.outbound, 1);
+});
+
+test('call counts still render before the 30-day lead corpus is ready', () => {
+  const { rows, team } = people({
+    leadsReady: false,
+    calls: [
+      call({ type: 'Booked', at: T0, agent: 1, from: '8045558001' }),
+      call({ type: 'Unbooked', at: T0, agent: 1, outbound: true, to: '8045558002' }),
+    ],
+  });
+  assert.equal(rows[0].leads, null);
+  assert.equal(rows[0].inbound, 1);
+  assert.equal(rows[0].outbound, 1);
+  assert.equal(team.leads, null);
+  assert.equal(team.inbound, 1);
+  assert.equal(team.outbound, 1);
+});
+
+test('the people table shows inbound and outbound and hides not a lead', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const html = await readFile(new URL('../public/board.html', import.meta.url), 'utf8');
+  assert.match(html, />Inbound</);
+  assert.match(html, />Outbound</);
+  assert.doesNotMatch(html, />Not a lead</);
+  assert.match(html, /c\.inbound/);
+  assert.match(html, /c\.outbound/);
+  assert.doesNotMatch(html, /c\.notLead/);
+});
+
 test('mergeFresh swaps only the window being refreshed', () => {
   const older = call({ type: 'Unbooked', at: T0 - DAY, agent: 1, customer: 1, from: '8045550010', id: 1 });
   const staleToday = call({ type: 'Unbooked', at: T0, agent: 1, customer: 1, from: '8045550011', id: 2 });

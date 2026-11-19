@@ -1,7 +1,7 @@
 import { cfg } from '../config.js';
 import { CALL, CALL_TYPE } from '../st/endpoints.js';
-import { externalPhone } from './phone.js';
-import { bookedBy, bookedToday, initials, isCancelled, isEstimate } from './rules.js';
+import { externalPhone, farPartyExternal } from './phone.js';
+import { bookedBy, bookedToday, initials, isAnswered, isCancelled, isEstimate, isInbound } from './rules.js';
 
 /**
  * Lead episodes — Command Center's rules (server/data/leads.ts).
@@ -161,6 +161,8 @@ export function pctRounded(booked, denom) {
 function blank(id) {
   return {
     id,
+    inbound: 0,
+    outbound: 0,
     leads: 0,
     bookedLeads: 0,
     unbooked: 0,
@@ -172,6 +174,59 @@ function blank(id) {
     booked: 0,
     est: 0,
   };
+}
+
+/**
+ * Which way a telecom row points. Anything else (blank, internal transfer
+ * labels) is not an inbound or an outbound call.
+ */
+function callDirection(call) {
+  const d = String(CALL.direction(call) ?? '').trim().toLowerCase();
+  if (d.startsWith('in')) return 'in';
+  if (d.startsWith('out')) return 'out';
+  return null;
+}
+
+/**
+ * Who the call counts for on the People table.
+ * Inbound is the ServiceTitan agent (`leadCall.agent`), the same person
+ * `handledBy` uses for "Calls in hours" / "Reached a person". There is no
+ * RingCentral extension-to-employee map on this board; an answered call with
+ * no agent is not credited.
+ * Outbound is that agent when ServiceTitan set one, otherwise `createdBy`,
+ * which is the field ServiceTitan fills on outbound (same join as demand.js).
+ */
+function volumeAgentId(call) {
+  const agent = numId(CALL.agentId(call));
+  if (agent != null) return agent;
+  if (isInbound(call)) return null;
+  return numId(CALL.inner(call).createdBy?.id ?? null);
+}
+
+/**
+ * Today's external phone calls for the People columns.
+ * Inbound: answered (RingCentral Accepted when the log is joined, otherwise
+ * an agent and a disposition other than Abandoned). Missed, voicemail, and
+ * overflow that nobody here took are out.
+ * Outbound: every external call placed, connected or not.
+ * Extension-to-extension calls are out of both. The window is the board's
+ * local day, not the business-hours filter on the "Calls in hours" tile.
+ */
+export function tallyCallVolume(calls, dayStart, dayEnd) {
+  const inbound = new Map();
+  const outbound = new Map();
+  for (const call of calls ?? []) {
+    const t = CALL.receivedAt(call);
+    if (t == null || t < dayStart || t >= dayEnd) continue;
+    const dir = callDirection(call);
+    if (!dir || !farPartyExternal(call)) continue;
+    if (dir === 'in' && !isAnswered(call)) continue;
+    const id = volumeAgentId(call);
+    if (id == null) continue;
+    const map = dir === 'in' ? inbound : outbound;
+    map.set(id, (map.get(id) || 0) + 1);
+  }
+  return { inbound, outbound };
 }
 
 /**
@@ -190,6 +245,8 @@ export function buildPeopleRows({
   dayEpisodes = [],
   trailingEpisodes = [],
   notLeadByEmployee = new Map(),
+  inboundByEmployee = new Map(),
+  outboundByEmployee = new Map(),
   jobs = [],
   csrIds = null,
   hideIds = null,
@@ -238,6 +295,17 @@ export function buildPeopleRows({
     row.notLead += n;
   }
 
+  for (const [id, n] of inboundByEmployee) {
+    const row = ensure(id);
+    if (!row) continue;
+    row.inbound += n;
+  }
+  for (const [id, n] of outboundByEmployee) {
+    const row = ensure(id);
+    if (!row) continue;
+    row.outbound += n;
+  }
+
   for (const job of bookedToday(jobs)) {
     const row = ensure(bookedBy(job));
     if (!row) continue;
@@ -251,6 +319,8 @@ export function buildPeopleRows({
     return {
       n: name,
       i: initials(name),
+      inbound: r.inbound,
+      outbound: r.outbound,
       leads: leadsReady ? r.leads : null,
       bookedLeads: leadsReady ? r.bookedLeads : null,
       unbooked: leadsReady ? r.unbooked : null,
@@ -273,10 +343,13 @@ export function buildPeopleRows({
     .sort((a, b) => a.n.localeCompare(b.n));
 
   const team = {
+    inbound: 0, outbound: 0,
     leads: 0, bookedLeads: 0, unbooked: 0, notLead: 0, booked: 0, est: 0,
     rateLeads: 0, rateBooked: 0, trailLeads: 0, trailBooked: 0,
   };
   for (const r of accumulated) {
+    team.inbound += r.inbound || 0;
+    team.outbound += r.outbound || 0;
     team.notLead += r.notLead || 0;
     team.booked += r.booked || 0;
     team.est += r.est || 0;
@@ -294,6 +367,8 @@ export function buildPeopleRows({
     ready: leadsReady,
     rows,
     team: {
+      inbound: team.inbound,
+      outbound: team.outbound,
       leads: leadsReady ? team.leads : null,
       bookedLeads: leadsReady ? team.bookedLeads : null,
       unbooked: leadsReady ? team.unbooked : null,
@@ -331,6 +406,8 @@ export function peopleForWindow({
     notLeadByEmployee.set(id, (notLeadByEmployee.get(id) || 0) + 1);
   }
 
+  const volume = tallyCallVolume(calls, dayStart, dayEnd);
+
   const dayJobs = (jobs ?? []).filter((job) => {
     const t = Date.parse(job.createdOn ?? '');
     return Number.isFinite(t) && t >= dayStart && t < dayEnd;
@@ -349,6 +426,8 @@ export function peopleForWindow({
     dayEpisodes,
     trailingEpisodes,
     notLeadByEmployee,
+    inboundByEmployee: volume.inbound,
+    outboundByEmployee: volume.outbound,
     jobs: dayJobs,
     csrIds,
     hideIds,
