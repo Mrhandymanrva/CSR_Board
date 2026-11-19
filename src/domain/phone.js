@@ -29,3 +29,15 @@ export function externalPhone(call) {
   const secondary = inbound ? to : from;
   return partyNumber(primary) || partyNumber(secondary);
 }
+
+/**
+ * True when the far party is a 10-digit number.
+ * Inbound looks only at the caller. Outbound looks only at who was dialled,
+ * not at our own caller-id, so an extension-to-extension call is not external
+ * just because the office number is on the other side of the leg.
+ */
+export function farPartyExternal(call) {
+  const inbound = /inbound/i.test(CALL.direction(call) ?? '');
+  const party = inbound ? CALL.from(call) : CALL.to(call);
+  return partyNumber(party) != null;
+}

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { classifyCall, summarizeRc } from '../src/domain/callClass.js';
 import { annotateInbound, reduceCalls } from '../src/domain/demand.js';
 import { isAnswered, isMissed } from '../src/domain/rules.js';
-import { phoneKey } from '../src/domain/phone.js';
+import { farPartyExternal, phoneKey } from '../src/domain/phone.js';
 import { indexRcRecords, matchCall } from '../src/rc/match.js';
 import { createRcCache } from '../src/rc/cache.js';
 import { overflowNumbers, rcMode } from '../src/rc/client.js';
@@ -75,6 +75,19 @@ test('phone keys ignore extensions and punctuation', () => {
   assert.equal(phoneKey('804-655-6490'), '8046556490');
   assert.equal(phoneKey('51'), null);
   assert.equal(phoneKey('1002'), null);
+});
+
+test('far party ignores our own caller-id on an extension dial', () => {
+  const external = {
+    leadCall: { direction: 'Outbound', to: '8045550199', from: '101' },
+  };
+  const internal = {
+    leadCall: { direction: 'Outbound', to: '1002', from: '8045550000' },
+  };
+  const inboundExt = { leadCall: { direction: 'Inbound', from: '51', to: '8045550000' } };
+  assert.equal(farPartyExternal(external), true);
+  assert.equal(farPartyExternal(internal), false);
+  assert.equal(farPartyExternal(inboundExt), false);
 });
 
 test('overflow defaults are Broadly and the old Nonstop number', () => {

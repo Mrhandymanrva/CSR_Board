@@ -126,7 +126,7 @@ measured on, so change them there and nowhere else.
 | Estimates | Distinct `jobTypeId` values | Estimates are not immediately convertible revenue, and booking a free estimate is the easy way to inflate a booking rate |
 | Per-call booking rate | **DELETED 2026-07-29 — do not reinstate** | Intake-first business. See § What replaced booking rate |
 | CSR measurement | **People table: leads, closing %, jobs. No rank, no per-call rate, no target** | Owner-approved mockup D, 2026-11-12. Closing % is one lead per customer over 30 days (see `src/domain/leads.js`), not the deleted per-call rate |
-| CSR row contents | Leads, booked leads, closing % (today, still settling), trailing 30-day conversion, unbooked, not-a-lead, jobs booked, estimates, plus a team total | Jobs booked stay `createdById`. Lead owner is the person on the first call. Those two people can differ |
+| CSR row contents | Inbound, outbound, leads, booked leads, closing % (today, still settling), trailing 30-day conversion, unbooked, jobs booked, estimates, plus a team total | Not-a-lead is still counted for lead math and is not a column. Jobs booked stay `createdById`. Lead owner is the person on the first call. Inbound and outbound are today's external phone calls: see below |
 | CSR row order | **Alphabetical**, from the server | Sorting by any metric is a ranking. Stable order also lets someone find their own line from across the room |
 | Hidden from the grid | `CSR_HIDE_EMPLOYEE_IDS` drops them from People rows. Team totals still include their leads and jobs | Empty by default. If the roster is pinned, the id has to stay in `CSR_EMPLOYEE_IDS` or it is not counted |
 | Missed calls | "Missed", never "lost". With RingCentral unset, ServiceTitan `Abandoned` is still the miss. With it set, a call is missed only when it was truly unanswered | Accepted in RingCentral and left Abandoned in ServiceTitan is "answered, no disposition", not a miss. In-hours forwards to Broadly / old Nonstop are "sent to Broadly". After hours stay off the demand tiles |
@@ -206,9 +206,21 @@ never enter the demand tiles. Jobs booked (`createdById`) are a third number:
 one lead can book several jobs, and the owner of the lead can be a different
 person from the one who typed the job.
 
-The old CSR activity columns (in, out, phone time) are gone. Do not put them
-back beside the lead table — that was a different question, and mixing it with
-closing % is how a ranking comes back.
+**Inbound and outbound on the People table are call counts for the local day,**
+the same ServiceTitan telecom rows as "Calls in hours" and "Reached a person"
+(RingCentral only decides answered vs missed when that log is joined). They are
+not a ranking and not a per-call booking rate.
+
+| | Counts | Does not count |
+|---|---|---|
+| Inbound | External inbound calls that CSR answered today. Agent is `leadCall.agent.id`. Answered means RingCentral Accepted on a non-overflow leg when the log is joined, otherwise an agent plus any disposition other than Abandoned | Missed, voicemail, Abandoned with nobody on it, overflow nobody here took, extension-to-extension, a call answered with no agent to credit |
+| Outbound | External outbound calls that CSR placed today, connected or not. Agent when ServiceTitan set one, otherwise `createdBy` | Extension-to-extension. The office caller-id on the from side does not make an extension dial external |
+
+The window is the board's local day (`America/New_York` via `TZ`), including
+after hours. The "Calls in hours" tile stays business hours only. Not-a-lead
+calls are still tallied (`notLead` on the row) because lead math uses that
+count; the column is not on the TV. Team totals add the roster, including
+anyone `CSR_HIDE_EMPLOYEE_IDS` hides from the grid. Phone time stays off.
 
 **A CSR showing zero leads is often correct.** Some enter jobs and rarely take a
 Booked or Unbooked call. Before assuming an attribution bug, check the raw calls —

@@ -70,8 +70,8 @@
   .ptitle .note{color:var(--ink-3);letter-spacing:.04em;text-transform:none;font-size:16px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-  /* People lead table: name + 8 metrics. Same panel the activity grid used. */
-  .gridL{display:grid;grid-template-columns:1.45fr 76px 84px 114px 122px 88px 98px 106px 96px;align-items:center;column-gap:4px}
+  /* People lead table: name + 9 metrics. Same panel width as before. */
+  .gridL{display:grid;grid-template-columns:minmax(148px,1.25fr) 70px 82px 58px 66px 108px 118px 76px 88px 70px;align-items:center;column-gap:3px}
   .lbhead{font-family:var(--cond);font-size:15px;letter-spacing:.08em;text-transform:uppercase;
     color:var(--ink-3);padding:10px 0 8px;border-bottom:1px solid var(--edge);font-weight:500}
   .lbhead div:nth-child(n+2){text-align:center;line-height:1.15}
@@ -228,12 +228,13 @@
           <span class="note" id="peopleNote">Leads are one per customer over 30 days, including a callback. Closing % is today and still settling. 30-day conversion is the trailing rate.</span></div>
         <div class="gridL lbhead">
           <div>CSR</div>
+          <div>Inbound</div>
+          <div>Outbound</div>
           <div>Leads</div>
           <div>Booked</div>
           <div>Closing %<span class="subh">today · settling</span></div>
           <div>30-day conv. %<span class="subh">trailing 30 days</span></div>
           <div>Unbooked</div>
-          <div>Not a lead</div>
           <div>Jobs booked</div>
           <div>Estimates</div>
         </div>
@@ -387,12 +388,13 @@ function render(){
     ? row.trailBooked+' of '+row.trailLeads : 'trailing';
   const line=(c,team)=>`<div class="gridL lbrow${team?' teamrow':''}">
       ${who(c,team)}
+      <div class="num">${dash(c.inbound)}</div>
+      <div class="num">${dash(c.outbound)}</div>
       <div class="num">${dash(c.leads)}</div>
       <div class="num">${dash(c.bookedLeads)}</div>
       ${pctCell(c.closingPct,'settling')}
       ${pctCell(c.trailPct,trailSub(c,team))}
       <div class="num dim">${dash(c.unbooked)}</div>
-      <div class="num dim">${dash(c.notLead)}</div>
       <div class="num work">${c.booked??0}</div>
       <div class="num dim">${c.est??0}</div></div>`;
   const team=D.team;
