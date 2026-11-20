@@ -2,8 +2,7 @@
  *  Figures match the approved mockup D. Not live ServiceTitan data. */
 
 /* Example figures, not live ServiceTitan data.
-   40 team + 4 coordinators + 2 others + 15 missed = 61 in-hours calls.
-   The coordinator row's inbound matches that coordinators segment. */
+   40 team + 3 coordinators + 2 other staff + 1 unattributed + 15 missed = 61. */
 const csrs = [
   { n: 'Avery Brooks', i: 'AB', inbound: 5, outbound: 2, leads: 3, bookedLeads: 1, closingPct: 33, trailPct: 62, trailBooked: 31, trailLeads: 50, unbooked: 2, notLead: 2, booked: 3, est: 1 },
   { n: 'Casey Morgan', i: 'CM', inbound: 8, outbound: 3, leads: 4, bookedLeads: 2, closingPct: 50, trailPct: 55, trailBooked: 22, trailLeads: 40, unbooked: 2, notLead: 3, booked: 3, est: 1 },
@@ -30,8 +29,9 @@ export const fixture = {
   subtitle: 'Call center — booking performance, day to date',
   callsHandled: 61,
   teamAnswered: 40,
-  coordinatorsAnswered: 4,
-  answeredByOthers: 2,
+  coordinatorsAnswered: 3,
+  otherStaffAnswered: 2,
+  unattributed: 1,
   missedCalls: 15,
   outbound: 12,
   afterHours: 3,
@@ -53,9 +53,15 @@ export const fixture = {
   csrs,
   coordinators: {
     n: 'Client Coordinators', i: 'CC',
-    inbound: 4, outbound: 3, leads: 2, bookedLeads: 1,
+    inbound: 3, outbound: 2, leads: 2, bookedLeads: 1,
     closingPct: 50, trailPct: 46, trailBooked: 6, trailLeads: 13,
-    unbooked: 1, notLead: 1, booked: 2, est: 0,
+    unbooked: 1, notLead: 1, booked: 1, est: 0,
+  },
+  otherStaff: {
+    n: 'Other staff', i: 'OS',
+    inbound: 2, outbound: 1, leads: 1, bookedLeads: 0,
+    closingPct: 0, trailPct: 40, trailBooked: 2, trailLeads: 5,
+    unbooked: 1, notLead: 0, booked: 1, est: 0,
   },
   team: {
     inbound: 40,

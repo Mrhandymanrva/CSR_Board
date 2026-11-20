@@ -1,4 +1,4 @@
-import { ccCoordinatorEmployeeIds, cfg, rcExtensionEmployeeId } from '../config.js';
+import { ccCoordinatorEmployeeIds, cfg, otherStaffEmployeeIds, rcExtensionEmployeeId } from '../config.js';
 import { CALL, CALL_TYPE } from '../st/endpoints.js';
 import { externalPhone, farPartyExternal } from './phone.js';
 import {
@@ -214,41 +214,59 @@ function volumeAgentId(call) {
 }
 
 /**
- * Coordinator ids that roll up into the one combined row.
- * Someone already on the pinned CSR roster keeps their own row, so the same
- * call is never both a CSR line and part of the coordinator total.
- * An unpinned roster (empty CSR list) still rolls these ids up, instead of
- * giving each coordinator a personal row.
+ * Ids for a rollup row. Anyone already on the pinned CSR roster, including
+ * someone `CSR_HIDE_EMPLOYEE_IDS` hides, keeps the CSR accounting: their own
+ * row when visible, or the Team total when hidden. They are not copied into
+ * a rollup. An unpinned roster still rolls these ids up instead of giving
+ * each of them a personal row. `skip` drops people already claimed by an
+ * earlier rollup (coordinators win over other staff).
  */
-export function coordinatorMemberIds(coordinatorIds, csrIds) {
-  const raw = (coordinatorIds ?? ccCoordinatorEmployeeIds()).map(numId).filter((id) => id != null);
+function rollupMemberIds(explicit, fallback, csrIds, skip = []) {
+  const raw = (explicit ?? fallback()).map(numId).filter((id) => id != null);
   const unique = [...new Set(raw)];
   const want = (csrIds ?? []).map(numId).filter((id) => id != null);
-  if (!want.length) return unique;
-  return unique.filter((id) => !want.includes(id));
+  const drop = new Set(want.length ? want : []);
+  for (const id of skip) drop.add(id);
+  if (!drop.size) return unique;
+  return unique.filter((id) => !drop.has(id));
+}
+
+export function coordinatorMemberIds(coordinatorIds, csrIds) {
+  return rollupMemberIds(coordinatorIds, ccCoordinatorEmployeeIds, csrIds);
+}
+
+export function otherStaffMemberIds(otherStaffIds, csrIds, coordinatorIds = null) {
+  const claimed = coordinatorMemberIds(coordinatorIds, csrIds);
+  return rollupMemberIds(otherStaffIds, otherStaffEmployeeIds, csrIds, claimed);
 }
 
 /**
  * In-hours inbound, split so the header adds up.
- * team answered + coordinators + answered by others + missed = every
+ * team + coordinators + other staff + unattributed + missed = every
  * in-hours inbound row.
  *
- * Team answered is the displayed CSR roster (CSR_EMPLOYEE_IDS minus hidden).
- * Coordinators is its own segment: calls credited to the combined Client
- * Coordinators row. Answered by others is the residual — hidden CSRs, a call
- * with nobody to credit, a forward to Broadly, an extension-to-extension
- * call. The people column is the whole local day, so after hours it can run
- * ahead of the in-hours figures.
+ * Team is the displayed CSR roster (CSR_EMPLOYEE_IDS minus hidden).
+ * Coordinators and other staff are the two rollup rows. Unattributed is
+ * what remains: a hidden CSR (still inside the Team total, not on a row),
+ * a call with nobody to credit, a forward to Broadly, an
+ * extension-to-extension call. The people column is the whole local day, so
+ * after hours it can run ahead of these in-hours figures.
  */
-export function splitInboundHours(calls, { csrIds = null, hideIds = null, coordinatorIds = null } = {}) {
+export function splitInboundHours(calls, {
+  csrIds = null,
+  hideIds = null,
+  coordinatorIds = null,
+  otherStaffIds = null,
+} = {}) {
   const want = (csrIds ?? cfg.rules.csrEmployeeIds).map(numId).filter((id) => id != null);
   const hide = new Set(
     (hideIds ?? cfg.rules.csrHideEmployeeIds).map(numId).filter((id) => id != null),
   );
-  const members = new Set(coordinatorMemberIds(coordinatorIds, want));
+  const coordinatorsSet = new Set(coordinatorMemberIds(coordinatorIds, want));
+  const staffSet = new Set(otherStaffMemberIds(otherStaffIds, want, coordinatorIds));
   const displayed = (id) => {
     if (id == null) return false;
-    if (members.has(id)) return false;
+    if (coordinatorsSet.has(id) || staffSet.has(id)) return false;
     if (hide.has(id)) return false;
     if (want.length && !want.includes(id)) return false;
     return true;
@@ -257,7 +275,8 @@ export function splitInboundHours(calls, { csrIds = null, hideIds = null, coordi
   let total = 0;
   let teamAnswered = 0;
   let coordinators = 0;
-  let answeredByOthers = 0;
+  let otherStaff = 0;
+  let unattributed = 0;
   let missed = 0;
   for (const call of calls ?? []) {
     if (!isInbound(call) || !inBusinessHours(call)) continue;
@@ -268,10 +287,11 @@ export function splitInboundHours(calls, { csrIds = null, hideIds = null, coordi
     }
     const id = isAnswered(call) && farPartyExternal(call) ? volumeAgentId(call) : null;
     if (displayed(id)) teamAnswered++;
-    else if (id != null && members.has(id)) coordinators++;
-    else answeredByOthers++;
+    else if (id != null && coordinatorsSet.has(id)) coordinators++;
+    else if (id != null && staffSet.has(id)) otherStaff++;
+    else unattributed++;
   }
-  return { total, teamAnswered, coordinators, answeredByOthers, missed };
+  return { total, teamAnswered, coordinators, otherStaff, unattributed, missed };
 }
 
 /**
@@ -314,9 +334,9 @@ export function tallyCallVolume(calls, dayStart, dayEnd) {
  * An id the roster already rejects is not counted: when `CSR_EMPLOYEE_IDS`
  * is pinned, a hidden person has to be in that list too.
  *
- * Coordinators are not CSR rows and are not part of `team` (that total is
- * what jobs booked, net, and the ticker read). They roll into `coordinators`,
- * one combined row. Inbound still comes from the same talker credit as a CSR.
+ * Coordinators and other staff are not CSR rows and are not part of `team`
+ * (that total is what jobs booked, net, and the ticker read). Each list is
+ * one combined row. Inbound still comes from the same talker credit.
  */
 export function buildPeopleRows({
   employees = new Map(),
@@ -329,21 +349,26 @@ export function buildPeopleRows({
   csrIds = null,
   hideIds = null,
   coordinatorIds = null,
+  otherStaffIds = null,
   leadsReady = true,
 }) {
   const want = (csrIds ?? cfg.rules.csrEmployeeIds).map(numId).filter((id) => id != null);
   const hide = new Set(
     (hideIds ?? cfg.rules.csrHideEmployeeIds).map(numId).filter((id) => id != null),
   );
-  const members = coordinatorMemberIds(coordinatorIds, want);
-  const memberSet = new Set(members);
-  const coord = members.length ? blank('coordinators') : null;
+  const coordIds = coordinatorMemberIds(coordinatorIds, want);
+  const staffIds = otherStaffMemberIds(otherStaffIds, want, coordinatorIds);
+  const coordSet = new Set(coordIds);
+  const staffSet = new Set(staffIds);
+  const coord = coordIds.length ? blank('coordinators') : null;
+  const staff = staffIds.length ? blank('otherStaff') : null;
   const acc = new Map();
 
   const ensure = (id) => {
     const key = numId(id);
     if (key == null) return null;
-    if (memberSet.has(key)) return coord;
+    if (coordSet.has(key)) return coord;
+    if (staffSet.has(key)) return staff;
     if (want.length && !want.includes(key)) return null;
     if (!acc.has(key)) acc.set(key, blank(key));
     return acc.get(key);
@@ -428,6 +453,9 @@ export function buildPeopleRows({
   const coordinators = coord
     ? { ...toRow(coord), n: 'Client Coordinators', i: 'CC' }
     : null;
+  const otherStaff = staff
+    ? { ...toRow(staff), n: 'Other staff', i: 'OS' }
+    : null;
 
   const team = {
     inbound: 0, outbound: 0,
@@ -454,6 +482,7 @@ export function buildPeopleRows({
     ready: leadsReady,
     rows,
     coordinators,
+    otherStaff,
     team: {
       inbound: team.inbound,
       outbound: team.outbound,
@@ -484,6 +513,7 @@ export function peopleForWindow({
   csrIds = null,
   hideIds = null,
   coordinatorIds = null,
+  otherStaffIds = null,
 }) {
   const notLeadByEmployee = new Map();
   for (const call of calls) {
@@ -521,6 +551,7 @@ export function peopleForWindow({
     csrIds,
     hideIds,
     coordinatorIds,
+    otherStaffIds,
     leadsReady,
   });
 }

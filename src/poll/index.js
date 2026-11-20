@@ -327,11 +327,11 @@ export function snapshot(day = state.today, offsetDays = 0) {
 
   const bus = R.buildBuRows(booked, dispatch, state.refs.businessUnits);
   /* In-hours split.
-     teamAnswered + coordinatorsAnswered + answeredByOthers + missedCalls
-     === callsHandled.
-     Team answered is the displayed CSR roster. Coordinators is the combined
-     Client Coordinators row. The people column is the whole local day and
-     can be higher once calls arrive outside open hours. */
+     teamAnswered + coordinatorsAnswered + otherStaffAnswered + unattributed
+     + missedCalls === callsHandled.
+     Team is the displayed CSR roster. Coordinators and other staff are the
+     rollup rows. The people column is the whole local day and can be higher
+     once calls arrive outside open hours. */
   const split = calls.ok ? splitInboundHours(day.rawCalls ?? []) : null;
 
   return {
@@ -359,7 +359,8 @@ export function snapshot(day = state.today, offsetDays = 0) {
     callsHandled: calls.handled,
     teamAnswered: split?.teamAnswered ?? null,
     coordinatorsAnswered: split?.coordinators ?? null,
-    answeredByOthers: split?.answeredByOthers ?? null,
+    otherStaffAnswered: split?.otherStaff ?? null,
+    unattributed: split?.unattributed ?? null,
     missedCalls: split?.missed ?? null,
     outbound: calls.outbound,
     afterHours: calls.afterHours,
@@ -381,6 +382,7 @@ export function snapshot(day = state.today, offsetDays = 0) {
     churn,
     csrs,
     coordinators: people.coordinators ?? null,
+    otherStaff: people.otherStaff ?? null,
     team: people.team,
     bus,
     week: state.week,

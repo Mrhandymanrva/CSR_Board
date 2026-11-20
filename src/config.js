@@ -94,9 +94,14 @@ export const DEFAULT_RC_EXT_TO_EMPLOYEE = Object.freeze({
   '105': 310014743, // Tanisha / Tanisha Kane
   '108': 231746536, // TiffanyJ / Tiffany Jones
   '102': 223117800, // AmyW / Amy Williams
+  '114': 351468985, // Paul Maskarino — Dispatch, Client Coordinator
   '113': 322116688, // Claire Yu
   '115': 322135443, // Ivie Villagracia
-  '111': 316508824, // Lyra
+  '111': 316508824, // Lyra Montano
+  // Extension 116 is Wes Moore in RingCentral (extension id 2931152027),
+  // not a second Claire Yu line. It is not mapped. Extension 104 is Carli
+  // Hagenbuch, a real user extension, but this repo has no ServiceTitan id
+  // for her, so she is not mapped either.
 });
 
 export function rcExtToEmployeeMap() {
@@ -121,19 +126,35 @@ export function rcExtensionEmployeeId(ext) {
   return id == null ? null : id;
 }
 
-/* Client coordinators share one People row. Ids are the same ServiceTitan
-   employees as extensions 113, 115, and 111 in the map above.
+/* Client coordinators share one People row: Claire, Ivie, and Paul.
+   Lyra is not part of the sales call flow; she is on the Other staff row.
    CC_COORDINATOR_EMPLOYEE_IDS replaces the whole list when set
    (comma-separated employee ids). Unset or blank keeps this default. */
 export const DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS = Object.freeze([
   322116688, // Claire Yu — ext 113
   322135443, // Ivie Villagracia — ext 115
-  316508824, // Lyra — ext 111
+  351468985, // Paul Maskarino — ext 114
 ]);
 
 export function ccCoordinatorEmployeeIds() {
-  const raw = process.env.CC_COORDINATOR_EMPLOYEE_IDS;
-  if (raw == null || raw.trim() === '') return [...DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS];
+  return idList(process.env.CC_COORDINATOR_EMPLOYEE_IDS, DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS);
+}
+
+/* Mapped people who are not CSRs and not coordinators. One People row.
+   Amy is already in the extension map. Lyra was taken off the coordinator
+   row. Carli Hagenbuch (RC ext 104) is not here: no ServiceTitan id is known.
+   OTHER_STAFF_EMPLOYEE_IDS replaces the whole list. Unset or blank keeps this. */
+export const DEFAULT_OTHER_STAFF_EMPLOYEE_IDS = Object.freeze([
+  316508824, // Lyra Montano — ext 111
+  223117800, // Amy Williams — ext 102
+]);
+
+export function otherStaffEmployeeIds() {
+  return idList(process.env.OTHER_STAFF_EMPLOYEE_IDS, DEFAULT_OTHER_STAFF_EMPLOYEE_IDS);
+}
+
+function idList(raw, fallback) {
+  if (raw == null || raw.trim() === '') return [...fallback];
   return raw.split(',')
     .map((s) => s.trim())
     .filter(Boolean)
