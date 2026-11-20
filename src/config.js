@@ -121,6 +121,26 @@ export function rcExtensionEmployeeId(ext) {
   return id == null ? null : id;
 }
 
+/* Client coordinators share one People row. Ids are the same ServiceTitan
+   employees as extensions 113, 115, and 111 in the map above.
+   CC_COORDINATOR_EMPLOYEE_IDS replaces the whole list when set
+   (comma-separated employee ids). Unset or blank keeps this default. */
+export const DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS = Object.freeze([
+  322116688, // Claire Yu — ext 113
+  322135443, // Ivie Villagracia — ext 115
+  316508824, // Lyra — ext 111
+]);
+
+export function ccCoordinatorEmployeeIds() {
+  const raw = process.env.CC_COORDINATOR_EMPLOYEE_IDS;
+  if (raw == null || raw.trim() === '') return [...DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS];
+  return raw.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((n) => Number.isFinite(n));
+}
+
 /* ── Timezone-correct day boundaries ───────────────────────────────
    ServiceTitan stores timestamps in UTC. "Today" must mean today in
    America/New_York or the board rolls over at 8pm during EDT.

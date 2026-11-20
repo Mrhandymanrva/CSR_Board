@@ -1,8 +1,9 @@
 /** Example snapshot in the shape /api/snapshot returns.
  *  Figures match the approved mockup D. Not live ServiceTitan data. */
 
-/* Inbound sums to teamAnswered so the example header reconciles:
-   40 team + 6 others + 15 missed = 61 in-hours calls. */
+/* Example figures, not live ServiceTitan data.
+   40 team + 4 coordinators + 2 others + 15 missed = 61 in-hours calls.
+   The coordinator row's inbound matches that coordinators segment. */
 const csrs = [
   { n: 'Avery Brooks', i: 'AB', inbound: 5, outbound: 2, leads: 3, bookedLeads: 1, closingPct: 33, trailPct: 62, trailBooked: 31, trailLeads: 50, unbooked: 2, notLead: 2, booked: 3, est: 1 },
   { n: 'Casey Morgan', i: 'CM', inbound: 8, outbound: 3, leads: 4, bookedLeads: 2, closingPct: 50, trailPct: 55, trailBooked: 22, trailLeads: 40, unbooked: 2, notLead: 3, booked: 3, est: 1 },
@@ -29,7 +30,8 @@ export const fixture = {
   subtitle: 'Call center — booking performance, day to date',
   callsHandled: 61,
   teamAnswered: 40,
-  answeredByOthers: 6,
+  coordinatorsAnswered: 4,
+  answeredByOthers: 2,
   missedCalls: 15,
   outbound: 12,
   afterHours: 3,
@@ -49,6 +51,12 @@ export const fixture = {
   leadsReady: true,
   churn: { open: 27, added: 6, cancelled: 3, since: '7:14 AM' },
   csrs,
+  coordinators: {
+    n: 'Client Coordinators', i: 'CC',
+    inbound: 4, outbound: 3, leads: 2, bookedLeads: 1,
+    closingPct: 50, trailPct: 46, trailBooked: 6, trailLeads: 13,
+    unbooked: 1, notLead: 1, booked: 2, est: 0,
+  },
   team: {
     inbound: 40,
     outbound: 16,

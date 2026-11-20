@@ -1,4 +1,4 @@
-import { cfg, rcExtensionEmployeeId } from '../config.js';
+import { ccCoordinatorEmployeeIds, cfg, rcExtensionEmployeeId } from '../config.js';
 import { CALL, CALL_TYPE } from '../st/endpoints.js';
 import { externalPhone, farPartyExternal } from './phone.js';
 import {
@@ -214,24 +214,41 @@ function volumeAgentId(call) {
 }
 
 /**
- * In-hours inbound, split so the header adds up.
- * team answered + answered by others + missed = every in-hours inbound row.
- *
- * Team answered is the part the people table would credit to someone on the
- * displayed roster (CSR_EMPLOYEE_IDS minus hidden). The people column itself
- * is the whole local day, so after hours it can run ahead of this figure.
- * Answered by others is everyone else who is not a miss: off-roster and
- * hidden employees, a call with nobody to credit, a forward to Broadly, and
- * an in-hours extension-to-extension call. That residual is what makes the
- * three numbers equal the in-hours total.
+ * Coordinator ids that roll up into the one combined row.
+ * Someone already on the pinned CSR roster keeps their own row, so the same
+ * call is never both a CSR line and part of the coordinator total.
+ * An unpinned roster (empty CSR list) still rolls these ids up, instead of
+ * giving each coordinator a personal row.
  */
-export function splitInboundHours(calls, { csrIds = null, hideIds = null } = {}) {
+export function coordinatorMemberIds(coordinatorIds, csrIds) {
+  const raw = (coordinatorIds ?? ccCoordinatorEmployeeIds()).map(numId).filter((id) => id != null);
+  const unique = [...new Set(raw)];
+  const want = (csrIds ?? []).map(numId).filter((id) => id != null);
+  if (!want.length) return unique;
+  return unique.filter((id) => !want.includes(id));
+}
+
+/**
+ * In-hours inbound, split so the header adds up.
+ * team answered + coordinators + answered by others + missed = every
+ * in-hours inbound row.
+ *
+ * Team answered is the displayed CSR roster (CSR_EMPLOYEE_IDS minus hidden).
+ * Coordinators is its own segment: calls credited to the combined Client
+ * Coordinators row. Answered by others is the residual — hidden CSRs, a call
+ * with nobody to credit, a forward to Broadly, an extension-to-extension
+ * call. The people column is the whole local day, so after hours it can run
+ * ahead of the in-hours figures.
+ */
+export function splitInboundHours(calls, { csrIds = null, hideIds = null, coordinatorIds = null } = {}) {
   const want = (csrIds ?? cfg.rules.csrEmployeeIds).map(numId).filter((id) => id != null);
   const hide = new Set(
     (hideIds ?? cfg.rules.csrHideEmployeeIds).map(numId).filter((id) => id != null),
   );
+  const members = new Set(coordinatorMemberIds(coordinatorIds, want));
   const displayed = (id) => {
     if (id == null) return false;
+    if (members.has(id)) return false;
     if (hide.has(id)) return false;
     if (want.length && !want.includes(id)) return false;
     return true;
@@ -239,6 +256,7 @@ export function splitInboundHours(calls, { csrIds = null, hideIds = null } = {})
 
   let total = 0;
   let teamAnswered = 0;
+  let coordinators = 0;
   let answeredByOthers = 0;
   let missed = 0;
   for (const call of calls ?? []) {
@@ -250,9 +268,10 @@ export function splitInboundHours(calls, { csrIds = null, hideIds = null } = {})
     }
     const id = isAnswered(call) && farPartyExternal(call) ? volumeAgentId(call) : null;
     if (displayed(id)) teamAnswered++;
+    else if (id != null && members.has(id)) coordinators++;
     else answeredByOthers++;
   }
-  return { total, teamAnswered, answeredByOthers, missed };
+  return { total, teamAnswered, coordinators, answeredByOthers, missed };
 }
 
 /**
@@ -294,6 +313,10 @@ export function tallyCallVolume(calls, dayStart, dayEnd) {
  * everyone else, then dropped from `rows` only. `team` still includes them.
  * An id the roster already rejects is not counted: when `CSR_EMPLOYEE_IDS`
  * is pinned, a hidden person has to be in that list too.
+ *
+ * Coordinators are not CSR rows and are not part of `team` (that total is
+ * what jobs booked, net, and the ticker read). They roll into `coordinators`,
+ * one combined row. Inbound still comes from the same talker credit as a CSR.
  */
 export function buildPeopleRows({
   employees = new Map(),
@@ -305,17 +328,22 @@ export function buildPeopleRows({
   jobs = [],
   csrIds = null,
   hideIds = null,
+  coordinatorIds = null,
   leadsReady = true,
 }) {
   const want = (csrIds ?? cfg.rules.csrEmployeeIds).map(numId).filter((id) => id != null);
   const hide = new Set(
     (hideIds ?? cfg.rules.csrHideEmployeeIds).map(numId).filter((id) => id != null),
   );
+  const members = coordinatorMemberIds(coordinatorIds, want);
+  const memberSet = new Set(members);
+  const coord = members.length ? blank('coordinators') : null;
   const acc = new Map();
 
   const ensure = (id) => {
     const key = numId(id);
     if (key == null) return null;
+    if (memberSet.has(key)) return coord;
     if (want.length && !want.includes(key)) return null;
     if (!acc.has(key)) acc.set(key, blank(key));
     return acc.get(key);
@@ -397,6 +425,10 @@ export function buildPeopleRows({
     .map(toRow)
     .sort((a, b) => a.n.localeCompare(b.n));
 
+  const coordinators = coord
+    ? { ...toRow(coord), n: 'Client Coordinators', i: 'CC' }
+    : null;
+
   const team = {
     inbound: 0, outbound: 0,
     leads: 0, bookedLeads: 0, unbooked: 0, notLead: 0, booked: 0, est: 0,
@@ -421,6 +453,7 @@ export function buildPeopleRows({
   return {
     ready: leadsReady,
     rows,
+    coordinators,
     team: {
       inbound: team.inbound,
       outbound: team.outbound,
@@ -450,6 +483,7 @@ export function peopleForWindow({
   leadsReady = true,
   csrIds = null,
   hideIds = null,
+  coordinatorIds = null,
 }) {
   const notLeadByEmployee = new Map();
   for (const call of calls) {
@@ -486,6 +520,7 @@ export function peopleForWindow({
     jobs: dayJobs,
     csrIds,
     hideIds,
+    coordinatorIds,
     leadsReady,
   });
 }

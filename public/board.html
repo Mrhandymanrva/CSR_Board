@@ -98,6 +98,12 @@
   .teamrow{border-top:2px solid var(--edge);border-bottom:none;flex:0 0 auto !important;padding:10px 0 2px}
   .teamrow .nm{font-size:18px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);font-weight:500}
   .teamrow .num,.teamrow .pctcell b{font-weight:700;font-size:28px}
+  /* One rollup for the coordinators. Not a CSR, and not the team total. */
+  .coordrow{border-top:2px solid var(--edge);flex:0 0 auto !important;padding:8px 0 4px}
+  .coordrow .nm{font-size:22px;letter-spacing:.01em}
+  .d1 .coordrow .nm{font-size:20px}
+  .d2 .coordrow .nm{font-size:18px}
+  .d2 .coordrow .nsub{display:block}
 
   /* roster density — every CSR stays on screen, no scroll */
   .d1 .badge{width:38px;height:38px;font-size:16px}
@@ -328,7 +334,7 @@ function render(){
      credited to the people on this board; it is not the tile total. */
   const callsOk=D.callsOk && D.callsHandled!=null;
   const calls=callsOk?D.callsHandled:'\u2014';
-  const splitOk=callsOk && D.teamAnswered!=null && D.answeredByOthers!=null && D.missedCalls!=null;
+  const splitOk=callsOk && D.teamAnswered!=null && D.coordinatorsAnswered!=null && D.answeredByOthers!=null && D.missedCalls!=null;
   /* Team total, not the visible rows. CSR_HIDE_EMPLOYEE_IDS stay in this
      number — net, work jobs, estimate share, the footer — and off the grid.
      Closing % and the 30-day total are the team row, from the same object. */
@@ -347,7 +353,7 @@ function render(){
     {l:'Inbound calls (in hours)',v:calls,
       s:!callsOk?'Telecom unavailable'
         :(splitOk
-          ? D.teamAnswered+' team answered · '+D.answeredByOthers+' by others · '+D.missedCalls+' missed<br>Avg call '+D.avgCall+' · '+D.afterHours+' after hours'
+          ? D.teamAnswered+' team · '+D.coordinatorsAnswered+' coordinators · '+D.answeredByOthers+' others · '+D.missedCalls+' missed<br>Avg call '+D.avgCall+' · '+D.afterHours+' after hours'
           : 'Avg call '+D.avgCall+' · '+D.afterHours+' after hours')},
     {l:'Reached a person',v:callsOk&&(reached+missed)?reachPct.toFixed(0)+'%':'—',
       s:reached+' of '+(reached+missed)+' callers · counted once each'},
@@ -383,29 +389,35 @@ function render(){
     ? 'Lead history is loading. Jobs booked are live. Booked is leads, not jobs.'
     : 'Leads start from Booked or Unbooked calls only, one customer over 30 days. Booked is leads, not jobs. Closing % is still settling.';
   const ranked=D.csrs||[];
+  const coord=D.coordinators||null;
   const rows=$('lbRows');
-  rows.className = ranked.length>9 ? 'd2' : ranked.length>6 ? 'd1' : '';
+  const bodyCount=ranked.length+(coord?1:0);
+  rows.className = bodyCount>9 ? 'd2' : bodyCount>6 ? 'd1' : '';
   const dash=v=>v==null?'\u2014':v;
   const pctCls=p=>p==null||p===0?'dim':p>=65?'good':p>=50?'mid':'bad';
   const pctCell=(p,sub)=>`<div class="pctcell"><b class="${pctCls(p)}">${p==null?'\u2014':p+'%'}</b><span>${sub}</span></div>`;
-  const who=(c,team)=>team
+  const who=(c,kind)=>kind==='team'
     ? `<div class="who"><div class="nm">Team</div></div>`
+    : kind==='coord'
+    ? `<div class="who"><div class="badge">CC</div><div><div class="nm">Client Coordinators</div><div class="nsub">Combined</div></div></div>`
     : `<div class="who"><div class="badge">${esc(c.i)}</div><div><div class="nm">${esc(c.n)}</div><div class="nsub">First-call owner</div></div></div>`;
-  const trailSub=(row,team)=>team && row.trailBooked!=null && row.trailLeads
+  const trailSub=(row,kind)=>kind!==false && row.trailBooked!=null && row.trailLeads
     ? row.trailBooked+' of '+row.trailLeads : 'trailing';
-  const line=(c,team)=>`<div class="gridL lbrow${team?' teamrow':''}">
-      ${who(c,team)}
+  const line=(c,kind)=>`<div class="gridL lbrow${kind==='team'?' teamrow':''}${kind==='coord'?' coordrow':''}">
+      ${who(c,kind)}
       <div class="num">${dash(c.inbound)}</div>
       <div class="num">${dash(c.outbound)}</div>
       <div class="num">${dash(c.leads)}</div>
       <div class="num">${dash(c.bookedLeads)}</div>
       ${pctCell(c.closingPct,'settling')}
-      ${pctCell(c.trailPct,trailSub(c,team))}
+      ${pctCell(c.trailPct,trailSub(c,kind))}
       <div class="num dim">${dash(c.unbooked)}</div>
       <div class="num work">${c.booked??0}</div>
       <div class="num dim">${c.est??0}</div></div>`;
   const team=D.team;
-  rows.innerHTML=ranked.map(c=>line(c,false)).join('')+(team?line(team,true):'');
+  rows.innerHTML=ranked.map(c=>line(c,false)).join('')
+    +(coord?line(coord,'coord'):'')
+    +(team?line(team,'team'):'');
 
   /* Net book panel */
   const state = net<0 ? 'neg' : net>0 ? 'pos' : 'even';

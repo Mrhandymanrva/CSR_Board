@@ -218,9 +218,10 @@ not a ranking and not a per-call booking rate.
 
 The window is the board's local day (`America/New_York` via `TZ`), including
 after hours. The "Inbound calls (in hours)" tile stays business hours only,
-and its subtitle splits that total into team answered (displayed roster),
-answered by others, and missed. The people Inbound column can run ahead of
-team answered once calls arrive outside open hours. Not-a-lead calls are
+and its subtitle splits that total into team answered (displayed CSR roster),
+coordinators (the one combined Client Coordinators row), answered by others,
+and missed. Those four add up to the tile. The people Inbound column can run
+ahead of the in-hours figures once calls arrive outside open hours. Not-a-lead calls are
 still tallied (`notLead` on the row) because lead math uses that count; the
 column is not on the TV. Team totals add the roster, including anyone
 `CSR_HIDE_EMPLOYEE_IDS` hides from the grid. The header's team answered does

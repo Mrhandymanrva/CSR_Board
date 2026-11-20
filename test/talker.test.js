@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { rcExtensionEmployeeId, rcExtToEmployeeMap, DEFAULT_RC_EXT_TO_EMPLOYEE } from '../src/config.js';
+import {
+  ccCoordinatorEmployeeIds,
+  DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS,
+  DEFAULT_RC_EXT_TO_EMPLOYEE,
+  rcExtensionEmployeeId,
+  rcExtToEmployeeMap,
+} from '../src/config.js';
 import { talkingExtension } from '../src/domain/callClass.js';
 import { annotateInbound, reduceCalls } from '../src/domain/demand.js';
 import { peopleForWindow, splitInboundHours } from '../src/domain/leads.js';
@@ -16,11 +22,15 @@ const OVERFLOW = overflowNumbers();
 const CHERIE = 200002561;
 const KRIS = 316690094;
 const CLAIRE = 322116688;
+const IVIE = 322135443;
+const LYRA = 316508824;
 
 const employees = new Map([
   [CHERIE, { id: CHERIE, name: 'Cherie McKesson' }],
   [KRIS, { id: KRIS, name: 'Kris Ranario' }],
   [CLAIRE, { id: CLAIRE, name: 'Claire Yu' }],
+  [IVIE, { id: IVIE, name: 'Ivie Villagracia' }],
+  [LYRA, { id: LYRA, name: 'Lyra' }],
 ]);
 
 let seq = 1;
@@ -77,11 +87,11 @@ function rcSession({ id, from, at = AT, legs, result = 'Accepted', toExt = '51',
   };
 }
 
-function people(calls, { csrIds = [CHERIE, KRIS], hideIds = [] } = {}) {
+function people(calls, { csrIds = [CHERIE, KRIS], hideIds = [], coordinatorIds = null, jobs = [] } = {}) {
   return peopleForWindow({
     employees,
     calls,
-    jobs: [],
+    jobs,
     dayStart: DAY_START,
     dayEnd: DAY_END,
     trailStart: DAY_START - 29 * 86400000,
@@ -90,6 +100,7 @@ function people(calls, { csrIds = [CHERIE, KRIS], hideIds = [] } = {}) {
     leadsReady: true,
     csrIds,
     hideIds,
+    coordinatorIds,
   });
 }
 
@@ -373,21 +384,30 @@ test('in-hours header split reconciles, and after-hours credit stays on the peop
   const tally = reduceCalls(raw, { rcEnabled: true });
   assert.equal(split.total, tally.handled);
   assert.equal(split.missed, tally.abandoned);
-  assert.equal(split.teamAnswered + split.answeredByOthers + split.missed, split.total);
+  assert.equal(
+    split.teamAnswered + split.coordinators + split.answeredByOthers + split.missed,
+    split.total,
+  );
 
-  const { rows, team } = people(raw, roster);
+  const { rows, team, coordinators } = people(raw, roster);
   const cherie = row(rows, 'Cherie McKesson');
   const kris = row(rows, 'Kris Ranario');
-  assert.equal(rows.some((r) => r.n === 'Claire Yu'), false);
+  assert.deepEqual(rows.map((r) => r.n), ['Cherie McKesson', 'Kris Ranario']);
   assert.equal(cherie.inbound, 2);
   assert.equal(kris.inbound, 1);
   assert.equal(team.inbound, 3);
+  assert.equal(coordinators.n, 'Client Coordinators');
+  assert.equal(coordinators.inbound, 1);
   assert.equal(split.total, 7);
   assert.equal(split.teamAnswered, 2);
-  assert.equal(split.answeredByOthers, 4);
+  assert.equal(split.coordinators, 1);
+  assert.equal(split.answeredByOthers, 3);
   assert.equal(split.missed, 1);
   assert.equal(split.teamAnswered, cherie.inbound + kris.inbound - 1);
-  assert.equal(split.teamAnswered + split.answeredByOthers + split.missed, tally.handled);
+  assert.equal(
+    split.teamAnswered + split.coordinators + split.answeredByOthers + split.missed,
+    tally.handled,
+  );
 });
 
 test('a hidden employee is answered by others, and still in the people team total', () => {
@@ -407,7 +427,11 @@ test('a hidden employee is answered by others, and still in the people team tota
   assert.equal(split.teamAnswered, 0);
   assert.equal(split.answeredByOthers, 1);
   assert.equal(split.missed, 0);
-  assert.equal(split.teamAnswered + split.answeredByOthers + split.missed, split.total);
+  assert.equal(split.coordinators, 0);
+  assert.equal(
+    split.teamAnswered + split.coordinators + split.answeredByOthers + split.missed,
+    split.total,
+  );
 });
 
 test('the override map is what volume credit uses', () => {
@@ -446,4 +470,120 @@ test('the override map is what volume credit uses', () => {
     if (prev == null) delete process.env.RC_EXT_TO_EMPLOYEE_IDS;
     else process.env.RC_EXT_TO_EMPLOYEE_IDS = prev;
   }
+});
+
+test('coordinator ids are the committed extension map for 113, 115, and 111', () => {
+  const prev = process.env.CC_COORDINATOR_EMPLOYEE_IDS;
+  try {
+    delete process.env.CC_COORDINATOR_EMPLOYEE_IDS;
+    assert.equal(rcExtensionEmployeeId('113'), CLAIRE);
+    assert.equal(rcExtensionEmployeeId('115'), IVIE);
+    assert.equal(rcExtensionEmployeeId('111'), LYRA);
+    assert.deepEqual(ccCoordinatorEmployeeIds(), [CLAIRE, IVIE, LYRA]);
+    assert.deepEqual([...DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS], [CLAIRE, IVIE, LYRA]);
+    process.env.CC_COORDINATOR_EMPLOYEE_IDS = '   ';
+    assert.deepEqual(ccCoordinatorEmployeeIds(), [CLAIRE, IVIE, LYRA]);
+    process.env.CC_COORDINATOR_EMPLOYEE_IDS = '9, 10,nope';
+    assert.deepEqual(ccCoordinatorEmployeeIds(), [9, 10]);
+  } finally {
+    if (prev == null) delete process.env.CC_COORDINATOR_EMPLOYEE_IDS;
+    else process.env.CC_COORDINATOR_EMPLOYEE_IDS = prev;
+  }
+});
+
+test('one Client Coordinators row aggregates the three; CSR rows stay put', () => {
+  const claireIn = stCall({ from: '8045559501', type: 'Abandoned' });
+  const ivieOut = stCall({
+    direction: 'Outbound', type: 'Excused', agent: IVIE, from: '8045550000',
+  });
+  ivieOut.leadCall.to = '8045559502';
+  const lyraLead = stCall({
+    from: '8045559503', type: 'Booked', agent: LYRA,
+  });
+  lyraLead.leadCall.customer = { id: 9503 };
+  const cherieIn = stCall({ from: '8045559504', type: 'Abandoned' });
+  annotateInbound([claireIn, cherieIn], indexRcRecords([
+    rcSession({
+      id: 'cc-claire', from: '8045559501',
+      legs: [queueLeg({ duration: 80 }), userLeg({ ext: '113', name: 'Claire Yu', duration: 55 })],
+    }),
+    rcSession({
+      id: 'cc-cherie', from: '8045559504',
+      legs: [userLeg({ ext: '103', name: 'Cherie McKesson', duration: 40 })],
+    }),
+  ]), OVERFLOW);
+
+  const jobs = [{
+    id: 1,
+    createdOn: AT,
+    createdById: LYRA,
+    customerId: 9503,
+    jobTypeId: 1,
+    jobStatus: 'Scheduled',
+  }, {
+    id: 2,
+    createdOn: AT,
+    createdById: CHERIE,
+    customerId: 1,
+    jobTypeId: 1,
+    jobStatus: 'Scheduled',
+  }];
+
+  const { rows, coordinators, team } = people(
+    [claireIn, ivieOut, lyraLead, cherieIn],
+    { csrIds: [CHERIE, KRIS], jobs },
+  );
+  assert.deepEqual(rows.map((r) => r.n), ['Cherie McKesson', 'Kris Ranario']);
+  assert.equal(row(rows, 'Cherie McKesson').inbound, 1);
+  assert.equal(row(rows, 'Cherie McKesson').booked, 1);
+  assert.equal(rows.some((r) => r.n === 'Claire Yu' || r.n === 'Ivie Villagracia' || r.n === 'Lyra'), false);
+
+  assert.equal(coordinators.n, 'Client Coordinators');
+  assert.equal(coordinators.i, 'CC');
+  assert.equal(coordinators.inbound, 2);
+  assert.equal(coordinators.outbound, 1);
+  assert.equal(coordinators.leads, 1);
+  assert.equal(coordinators.bookedLeads, 1);
+  assert.equal(coordinators.booked, 1);
+  assert.equal(team.inbound, 1);
+  assert.equal(team.booked, 1);
+  assert.equal(team.outbound, 0);
+});
+
+test('a CSR who is also listed as a coordinator keeps their own row', () => {
+  const call = stCall({ from: '8045559601', type: 'Booked', agent: CHERIE });
+  const { rows, coordinators } = people([call], {
+    csrIds: [CHERIE],
+    coordinatorIds: [CHERIE, CLAIRE],
+  });
+  assert.deepEqual(rows.map((r) => r.n), ['Cherie McKesson']);
+  assert.equal(rows[0].inbound, 1);
+  assert.equal(coordinators.inbound, 0);
+  assert.equal(coordinators.n, 'Client Coordinators');
+});
+
+test('a queue-only accept with no talker is still credited to nobody, including coordinators', () => {
+  const from = '8045559701';
+  const call = stCall({ from, type: 'Abandoned' });
+  annotateInbound([call], indexRcRecords([
+    rcSession({
+      id: 'queue-only',
+      from,
+      legs: [queueLeg({ duration: 40, name: 'Customer Care Queue' })],
+    }),
+  ]), OVERFLOW);
+  assert.equal(call._rc.talkerExt, null);
+  assert.equal(call._rc.answered, true);
+  const { rows, coordinators, team } = people([call], { csrIds: [CHERIE] });
+  assert.equal(row(rows, 'Cherie McKesson').inbound, 0);
+  assert.equal(coordinators.inbound, 0);
+  assert.equal(team.inbound, 0);
+  const split = splitInboundHours([call], { csrIds: [CHERIE] });
+  assert.equal(split.coordinators, 0);
+  assert.equal(split.teamAnswered, 0);
+  assert.equal(split.answeredByOthers, 1);
+  assert.equal(
+    split.teamAnswered + split.coordinators + split.answeredByOthers + split.missed,
+    split.total,
+  );
 });

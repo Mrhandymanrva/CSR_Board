@@ -529,8 +529,8 @@ test('the people table shows inbound and outbound and hides not a lead', async (
   assert.match(html, /c\.outbound/);
   assert.doesNotMatch(html, /c\.notLead/);
   assert.match(html, /Inbound calls \(in hours\)/);
-  assert.match(html, /team answered/);
-  assert.match(html, /by others/);
+  assert.match(html, /coordinators/);
+  assert.match(html, /Client Coordinators/);
   assert.match(html, /leads, not jobs/);
   assert.match(html, /booked or unbooked/);
   assert.match(html, /Booked or Unbooked calls only/);
