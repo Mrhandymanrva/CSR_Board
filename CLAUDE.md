@@ -219,7 +219,7 @@ not a ranking and not a per-call booking rate.
 The window is the board's local day (`America/New_York` via `TZ`), including
 after hours. The "Inbound calls (in hours)" tile stays business hours only,
 and its subtitle splits that total into team (displayed CSR roster),
-coordinators (Claire, Ivie, Paul), other staff (Lyra, Amy, and whoever
+coordinators (Claire, Ivie, Paul), other staff (Amy, Carli, Lyra, and whoever
 `OTHER_STAFF_EMPLOYEE_IDS` names), unattributed, and missed. Those five add
 up to the tile. A hidden CSR stays in the Team total and off the grid; their
 in-hours calls sit in unattributed, not in Other staff. The people Inbound column can run

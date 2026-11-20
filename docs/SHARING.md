@@ -59,7 +59,7 @@ Then fill in, from the probe output and their own operation:
 | `CSR_HIDE_EMPLOYEE_IDS` | optional. People to leave off the grid without dropping their jobs and leads from the totals. When the roster is pinned, these ids must also be in `CSR_EMPLOYEE_IDS` |
 | `RC_EXT_TO_EMPLOYEE_IDS` | optional. Replaces the committed extension→employee map (`ext=stId,ext=stId`) used to credit an inbound call to whoever talked in RingCentral. Unset keeps the originating office's map in `src/config.js`. Set it for any other franchise — those extension numbers are not yours |
 | `CC_COORDINATOR_EMPLOYEE_IDS` | optional. Employee ids rolled into the one Client Coordinators row. Unset keeps Claire, Ivie, and Paul. Set it, or the row will name the wrong people |
-| `OTHER_STAFF_EMPLOYEE_IDS` | optional. Employee ids rolled into the one Other staff row. Unset keeps Lyra and Amy. Not added to the Team total |
+| `OTHER_STAFF_EMPLOYEE_IDS` | optional. Employee ids rolled into the one Other staff row. Unset keeps Amy, Carli, and Lyra. Not added to the Team total |
 | `BRAND_NAME` `MARKET_LABEL` `BOARD_SUBTITLE` | header text |
 | `BU_LOCATION_TAGS` | `match=TAG` pairs for their business-unit naming |
 | `BUSINESS_OPEN_HOUR` `BUSINESS_CLOSE_HOUR` `BUSINESS_DAYS` | **their** hours, not yours |

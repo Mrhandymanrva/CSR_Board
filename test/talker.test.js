@@ -28,6 +28,7 @@ const IVIE = 322135443;
 const LYRA = 316508824;
 const PAUL = 351468985;
 const AMY = 223117800;
+const CARLI = 280123806;
 
 const employees = new Map([
   [CHERIE, { id: CHERIE, name: 'Cherie McKesson' }],
@@ -133,8 +134,8 @@ test('the committed extension map is the originating office, and a blank overrid
     assert.equal(rcExtensionEmployeeId('114'), PAUL);
     assert.equal(rcExtensionEmployeeId('115'), 322135443);
     assert.equal(rcExtensionEmployeeId('111'), LYRA);
+    assert.equal(rcExtensionEmployeeId('104'), CARLI);
     assert.equal(rcExtensionEmployeeId('116'), null);
-    assert.equal(rcExtensionEmployeeId('104'), null);
     assert.equal(rcExtensionEmployeeId('999'), null);
     process.env.RC_EXT_TO_EMPLOYEE_IDS = '   ';
     assert.equal(rcExtensionEmployeeId('103'), CHERIE);
@@ -486,7 +487,7 @@ test('the override map is what volume credit uses', () => {
   }
 });
 
-test('coordinator ids are Claire, Ivie, and Paul; other staff is Lyra and Amy', () => {
+test('coordinator ids are Claire, Ivie, and Paul; other staff is Amy, Carli, and Lyra', () => {
   const prevC = process.env.CC_COORDINATOR_EMPLOYEE_IDS;
   const prevS = process.env.OTHER_STAFF_EMPLOYEE_IDS;
   try {
@@ -494,13 +495,13 @@ test('coordinator ids are Claire, Ivie, and Paul; other staff is Lyra and Amy', 
     delete process.env.OTHER_STAFF_EMPLOYEE_IDS;
     assert.deepEqual(ccCoordinatorEmployeeIds(), [CLAIRE, IVIE, PAUL]);
     assert.deepEqual([...DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS], [CLAIRE, IVIE, PAUL]);
-    assert.deepEqual(otherStaffEmployeeIds(), [LYRA, AMY]);
-    assert.deepEqual([...DEFAULT_OTHER_STAFF_EMPLOYEE_IDS], [LYRA, AMY]);
+    assert.deepEqual(otherStaffEmployeeIds(), [AMY, CARLI, LYRA]);
+    assert.deepEqual([...DEFAULT_OTHER_STAFF_EMPLOYEE_IDS], [AMY, CARLI, LYRA]);
     assert.equal(DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS.includes(LYRA), false);
     process.env.CC_COORDINATOR_EMPLOYEE_IDS = '   ';
     process.env.OTHER_STAFF_EMPLOYEE_IDS = '   ';
     assert.deepEqual(ccCoordinatorEmployeeIds(), [CLAIRE, IVIE, PAUL]);
-    assert.deepEqual(otherStaffEmployeeIds(), [LYRA, AMY]);
+    assert.deepEqual(otherStaffEmployeeIds(), [AMY, CARLI, LYRA]);
     process.env.OTHER_STAFF_EMPLOYEE_IDS = '9, nope';
     assert.deepEqual(otherStaffEmployeeIds(), [9]);
   } finally {
@@ -629,6 +630,36 @@ test('a queue-only accept with no talker is still credited to nobody, including 
   assert.equal(split.coordinators, 0);
   assert.equal(split.teamAnswered, 0);
   assert.equal(split.otherStaff, 0);
+  assert.equal(split.unattributed, 1);
+  assert.equal(
+    split.teamAnswered + split.coordinators + split.otherStaff + split.unattributed + split.missed,
+    split.total,
+  );
+});
+
+test('Carli on extension 104 joins other staff; Wes on 116 stays unmapped', () => {
+  const carli = stCall({ from: '8045559901', type: 'Abandoned' });
+  const wes = stCall({ from: '8045559902', type: 'Abandoned' });
+  annotateInbound([carli, wes], indexRcRecords([
+    rcSession({
+      id: 'carli', from: '8045559901',
+      legs: [userLeg({ ext: '104', name: 'Carli Hagenbuch', duration: 40 })],
+    }),
+    rcSession({
+      id: 'wes-2', from: '8045559902',
+      legs: [userLeg({ ext: '116', name: 'Wes Moore', duration: 40 })],
+    }),
+  ]), OVERFLOW);
+  assert.equal(carli._rc.talkerExt, '104');
+  assert.equal(wes._rc.talkerExt, '116');
+  const { rows, coordinators, otherStaff } = people([carli, wes], { csrIds: [CHERIE] });
+  assert.deepEqual(rows.map((r) => r.n), ['Cherie McKesson']);
+  assert.equal(rows[0].inbound, 0);
+  assert.equal(coordinators.inbound, 0);
+  assert.equal(otherStaff.inbound, 1);
+  const split = splitInboundHours([carli, wes], { csrIds: [CHERIE] });
+  assert.equal(split.otherStaff, 1);
+  assert.equal(split.coordinators, 0);
   assert.equal(split.unattributed, 1);
   assert.equal(
     split.teamAnswered + split.coordinators + split.otherStaff + split.unattributed + split.missed,
