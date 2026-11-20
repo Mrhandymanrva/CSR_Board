@@ -207,20 +207,27 @@ one lead can book several jobs, and the owner of the lead can be a different
 person from the one who typed the job.
 
 **Inbound and outbound on the People table are call counts for the local day,**
-the same ServiceTitan telecom rows as "Calls in hours" and "Reached a person"
+the same ServiceTitan telecom rows as "Inbound calls (in hours)" and "Reached a person"
 (RingCentral only decides answered vs missed when that log is joined). They are
 not a ranking and not a per-call booking rate.
 
 | | Counts | Does not count |
 |---|---|---|
-| Inbound | External inbound calls that CSR answered today. Agent is `leadCall.agent.id`. Answered means RingCentral Accepted on a non-overflow leg when the log is joined, otherwise an agent plus any disposition other than Abandoned | Missed, voicemail, Abandoned with nobody on it, overflow nobody here took, extension-to-extension, a call answered with no agent to credit |
+| Inbound | External inbound calls that CSR answered today. Credit is the RingCentral talking extension when the joined log has one: the longest user leg with result Accepted or Call connected, at least 10 seconds, excluding overflow, queue, and forward-to-Broadly legs, mapped through `RC_EXT_TO_EMPLOYEE_IDS` (committed default in `src/config.js`). Otherwise `leadCall.agent.id`. An extension that is not in the map falls back to that agent. Answered means RingCentral Accepted on a non-overflow leg when the log is joined, otherwise an agent plus any disposition other than Abandoned | Missed, voicemail, Abandoned with nobody on it and no mapped talker, overflow nobody here took, extension-to-extension |
 | Outbound | External outbound calls that CSR placed today, connected or not. Agent when ServiceTitan set one, otherwise `createdBy` | Extension-to-extension. The office caller-id on the from side does not make an extension dial external |
 
 The window is the board's local day (`America/New_York` via `TZ`), including
-after hours. The "Calls in hours" tile stays business hours only. Not-a-lead
-calls are still tallied (`notLead` on the row) because lead math uses that
-count; the column is not on the TV. Team totals add the roster, including
-anyone `CSR_HIDE_EMPLOYEE_IDS` hides from the grid. Phone time stays off.
+after hours. The "Inbound calls (in hours)" tile stays business hours only,
+and its subtitle splits that total into team (displayed CSR roster),
+coordinators (Claire, Ivie, Paul), other staff (Amy, Carli, Lyra, and whoever
+`OTHER_STAFF_EMPLOYEE_IDS` names), unattributed, and missed. Those five add
+up to the tile. A hidden CSR stays in the Team total and off the grid; their
+in-hours calls sit in unattributed, not in Other staff. The people Inbound column can run
+ahead of the in-hours figures once calls arrive outside open hours. Not-a-lead calls are
+still tallied (`notLead` on the row) because lead math uses that count; the
+column is not on the TV. Team totals add the roster, including anyone
+`CSR_HIDE_EMPLOYEE_IDS` hides from the grid. The header's team answered does
+not — a hidden person is "answered by others". Phone time stays off.
 
 **A CSR showing zero leads is often correct.** Some enter jobs and rarely take a
 Booked or Unbooked call. Before assuming an attribution bug, check the raw calls —

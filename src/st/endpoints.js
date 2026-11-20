@@ -89,8 +89,9 @@ export const JOB = {
  * a way that looks like a quiet day. Read call fields through CALL below.
  *
  * `createdBy` is populated on OUTBOUND calls only (0 of 46 inbound carried it).
- * Inbound attribution is `leadCall.agent`. Abandoned calls have no agent at
- * all, which is correct — nobody picked up.
+ * ServiceTitan's inbound agent is `leadCall.agent`. Abandoned calls often have
+ * no agent — that is not proof nobody picked up. The board credits the
+ * RingCentral talker when the joined log has one (see callClass.js).
  */
 export const CALL = {
   inner: (c) => c?.leadCall ?? {},

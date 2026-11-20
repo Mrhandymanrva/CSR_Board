@@ -1,7 +1,10 @@
-import { cfg } from '../config.js';
+import { ccCoordinatorEmployeeIds, cfg, otherStaffEmployeeIds, rcExtensionEmployeeId } from '../config.js';
 import { CALL, CALL_TYPE } from '../st/endpoints.js';
 import { externalPhone, farPartyExternal } from './phone.js';
-import { bookedBy, bookedToday, initials, isAnswered, isCancelled, isEstimate, isInbound } from './rules.js';
+import {
+  bookedBy, bookedToday, inBusinessHours, initials, isAnswered, isCancelled,
+  isEstimate, isInbound, isMissed,
+} from './rules.js';
 
 /**
  * Lead episodes — Command Center's rules (server/data/leads.ts).
@@ -189,28 +192,119 @@ function callDirection(call) {
 
 /**
  * Who the call counts for on the People table.
- * Inbound is the ServiceTitan agent (`leadCall.agent`), the same person
- * `handledBy` uses for "Calls in hours" / "Reached a person". There is no
- * RingCentral extension-to-employee map on this board; an answered call with
- * no agent is not credited.
- * Outbound is that agent when ServiceTitan set one, otherwise `createdBy`,
- * which is the field ServiceTitan fills on outbound (same join as demand.js).
+ * Inbound prefers the RingCentral talker (`call._rc.talkerExt`), the longest
+ * user leg on the log the poller already joined. That extension maps to a
+ * ServiceTitan employee. An extension that is not in the map is not a person
+ * we can name, so the call falls back to `leadCall.agent` — the same fallback
+ * as when no talker leg qualified. Outbound stays the ServiceTitan agent when
+ * one is set, otherwise `createdBy` (the field ServiceTitan fills on outbound).
  */
 function volumeAgentId(call) {
+  if (isInbound(call)) {
+    const ext = call?._rc?.talkerExt;
+    if (ext != null && String(ext).trim() !== '') {
+      const mapped = numId(rcExtensionEmployeeId(ext));
+      if (mapped != null) return mapped;
+    }
+    return numId(CALL.agentId(call));
+  }
   const agent = numId(CALL.agentId(call));
   if (agent != null) return agent;
-  if (isInbound(call)) return null;
   return numId(CALL.inner(call).createdBy?.id ?? null);
+}
+
+/**
+ * Ids for a rollup row. Anyone already on the pinned CSR roster, including
+ * someone `CSR_HIDE_EMPLOYEE_IDS` hides, keeps the CSR accounting: their own
+ * row when visible, or the Team total when hidden. They are not copied into
+ * a rollup. An unpinned roster still rolls these ids up instead of giving
+ * each of them a personal row. `skip` drops people already claimed by an
+ * earlier rollup (coordinators win over other staff).
+ */
+function rollupMemberIds(explicit, fallback, csrIds, skip = []) {
+  const raw = (explicit ?? fallback()).map(numId).filter((id) => id != null);
+  const unique = [...new Set(raw)];
+  const want = (csrIds ?? []).map(numId).filter((id) => id != null);
+  const drop = new Set(want.length ? want : []);
+  for (const id of skip) drop.add(id);
+  if (!drop.size) return unique;
+  return unique.filter((id) => !drop.has(id));
+}
+
+export function coordinatorMemberIds(coordinatorIds, csrIds) {
+  return rollupMemberIds(coordinatorIds, ccCoordinatorEmployeeIds, csrIds);
+}
+
+export function otherStaffMemberIds(otherStaffIds, csrIds, coordinatorIds = null) {
+  const claimed = coordinatorMemberIds(coordinatorIds, csrIds);
+  return rollupMemberIds(otherStaffIds, otherStaffEmployeeIds, csrIds, claimed);
+}
+
+/**
+ * In-hours inbound, split so the header adds up.
+ * team + coordinators + other staff + unattributed + missed = every
+ * in-hours inbound row.
+ *
+ * Team is the displayed CSR roster (CSR_EMPLOYEE_IDS minus hidden).
+ * Coordinators and other staff are the two rollup rows. Unattributed is
+ * what remains: a hidden CSR (still inside the Team total, not on a row),
+ * a call with nobody to credit, a forward to Broadly, an
+ * extension-to-extension call. The people column is the whole local day, so
+ * after hours it can run ahead of these in-hours figures.
+ */
+export function splitInboundHours(calls, {
+  csrIds = null,
+  hideIds = null,
+  coordinatorIds = null,
+  otherStaffIds = null,
+} = {}) {
+  const want = (csrIds ?? cfg.rules.csrEmployeeIds).map(numId).filter((id) => id != null);
+  const hide = new Set(
+    (hideIds ?? cfg.rules.csrHideEmployeeIds).map(numId).filter((id) => id != null),
+  );
+  const coordinatorsSet = new Set(coordinatorMemberIds(coordinatorIds, want));
+  const staffSet = new Set(otherStaffMemberIds(otherStaffIds, want, coordinatorIds));
+  const displayed = (id) => {
+    if (id == null) return false;
+    if (coordinatorsSet.has(id) || staffSet.has(id)) return false;
+    if (hide.has(id)) return false;
+    if (want.length && !want.includes(id)) return false;
+    return true;
+  };
+
+  let total = 0;
+  let teamAnswered = 0;
+  let coordinators = 0;
+  let otherStaff = 0;
+  let unattributed = 0;
+  let missed = 0;
+  for (const call of calls ?? []) {
+    if (!isInbound(call) || !inBusinessHours(call)) continue;
+    total++;
+    if (isMissed(call)) {
+      missed++;
+      continue;
+    }
+    const id = isAnswered(call) && farPartyExternal(call) ? volumeAgentId(call) : null;
+    if (displayed(id)) teamAnswered++;
+    else if (id != null && coordinatorsSet.has(id)) coordinators++;
+    else if (id != null && staffSet.has(id)) otherStaff++;
+    else unattributed++;
+  }
+  return { total, teamAnswered, coordinators, otherStaff, unattributed, missed };
 }
 
 /**
  * Today's external phone calls for the People columns.
  * Inbound: answered (RingCentral Accepted when the log is joined, otherwise
- * an agent and a disposition other than Abandoned). Missed, voicemail, and
- * overflow that nobody here took are out.
+ * an agent and a disposition other than Abandoned), credited to the
+ * RingCentral talker when that extension is mapped, otherwise the
+ * ServiceTitan agent. Missed, voicemail, and overflow that nobody here took
+ * are out. A call with neither a mapped talker nor an agent is credited to
+ * nobody.
  * Outbound: every external call placed, connected or not.
  * Extension-to-extension calls are out of both. The window is the board's
- * local day, not the business-hours filter on the "Calls in hours" tile.
+ * local day, not the business-hours filter on the inbound-in-hours tile.
  */
 export function tallyCallVolume(calls, dayStart, dayEnd) {
   const inbound = new Map();
@@ -239,6 +333,10 @@ export function tallyCallVolume(calls, dayStart, dayEnd) {
  * everyone else, then dropped from `rows` only. `team` still includes them.
  * An id the roster already rejects is not counted: when `CSR_EMPLOYEE_IDS`
  * is pinned, a hidden person has to be in that list too.
+ *
+ * Coordinators and other staff are not CSR rows and are not part of `team`
+ * (that total is what jobs booked, net, and the ticker read). Each list is
+ * one combined row. Inbound still comes from the same talker credit.
  */
 export function buildPeopleRows({
   employees = new Map(),
@@ -250,17 +348,27 @@ export function buildPeopleRows({
   jobs = [],
   csrIds = null,
   hideIds = null,
+  coordinatorIds = null,
+  otherStaffIds = null,
   leadsReady = true,
 }) {
   const want = (csrIds ?? cfg.rules.csrEmployeeIds).map(numId).filter((id) => id != null);
   const hide = new Set(
     (hideIds ?? cfg.rules.csrHideEmployeeIds).map(numId).filter((id) => id != null),
   );
+  const coordIds = coordinatorMemberIds(coordinatorIds, want);
+  const staffIds = otherStaffMemberIds(otherStaffIds, want, coordinatorIds);
+  const coordSet = new Set(coordIds);
+  const staffSet = new Set(staffIds);
+  const coord = coordIds.length ? blank('coordinators') : null;
+  const staff = staffIds.length ? blank('otherStaff') : null;
   const acc = new Map();
 
   const ensure = (id) => {
     const key = numId(id);
     if (key == null) return null;
+    if (coordSet.has(key)) return coord;
+    if (staffSet.has(key)) return staff;
     if (want.length && !want.includes(key)) return null;
     if (!acc.has(key)) acc.set(key, blank(key));
     return acc.get(key);
@@ -342,6 +450,13 @@ export function buildPeopleRows({
     .map(toRow)
     .sort((a, b) => a.n.localeCompare(b.n));
 
+  const coordinators = coord
+    ? { ...toRow(coord), n: 'Client Coordinators', i: 'CC' }
+    : null;
+  const otherStaff = staff
+    ? { ...toRow(staff), n: 'Other staff', i: 'OS' }
+    : null;
+
   const team = {
     inbound: 0, outbound: 0,
     leads: 0, bookedLeads: 0, unbooked: 0, notLead: 0, booked: 0, est: 0,
@@ -366,6 +481,8 @@ export function buildPeopleRows({
   return {
     ready: leadsReady,
     rows,
+    coordinators,
+    otherStaff,
     team: {
       inbound: team.inbound,
       outbound: team.outbound,
@@ -395,6 +512,8 @@ export function peopleForWindow({
   leadsReady = true,
   csrIds = null,
   hideIds = null,
+  coordinatorIds = null,
+  otherStaffIds = null,
 }) {
   const notLeadByEmployee = new Map();
   for (const call of calls) {
@@ -431,6 +550,8 @@ export function peopleForWindow({
     jobs: dayJobs,
     csrIds,
     hideIds,
+    coordinatorIds,
+    otherStaffIds,
     leadsReady,
   });
 }

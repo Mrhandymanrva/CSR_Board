@@ -3,7 +3,7 @@ import { stGetAll } from '../st/client.js';
 import { EP, PARAM, CALL } from '../st/endpoints.js';
 import * as R from '../domain/rules.js';
 import { annotateInbound, reduceCalls } from '../domain/demand.js';
-import { mergeFresh, peopleForWindow } from '../domain/leads.js';
+import { mergeFresh, peopleForWindow, splitInboundHours } from '../domain/leads.js';
 import { indexRcRecords } from '../rc/match.js';
 import { loadCallLog, logRcModeOnce, overflowNumbers } from '../rc/client.js';
 
@@ -326,6 +326,13 @@ export function snapshot(day = state.today, offsetDays = 0) {
   const csrs = people.rows ?? [];
 
   const bus = R.buildBuRows(booked, dispatch, state.refs.businessUnits);
+  /* In-hours split.
+     teamAnswered + coordinatorsAnswered + otherStaffAnswered + unattributed
+     + missedCalls === callsHandled.
+     Team is the displayed CSR roster. Coordinators and other staff are the
+     rollup rows. The people column is the whole local day and can be higher
+     once calls arrive outside open hours. */
+  const split = calls.ok ? splitInboundHours(day.rawCalls ?? []) : null;
 
   return {
     ready: true,
@@ -350,6 +357,11 @@ export function snapshot(day = state.today, offsetDays = 0) {
     subtitle: cfg.brand.subtitle,
 
     callsHandled: calls.handled,
+    teamAnswered: split?.teamAnswered ?? null,
+    coordinatorsAnswered: split?.coordinators ?? null,
+    otherStaffAnswered: split?.otherStaff ?? null,
+    unattributed: split?.unattributed ?? null,
+    missedCalls: split?.missed ?? null,
     outbound: calls.outbound,
     afterHours: calls.afterHours,
     avgCall: R.fmtSecs(calls.avgCallSecs),
@@ -369,6 +381,8 @@ export function snapshot(day = state.today, offsetDays = 0) {
 
     churn,
     csrs,
+    coordinators: people.coordinators ?? null,
+    otherStaff: people.otherStaff ?? null,
     team: people.team,
     bus,
     week: state.week,

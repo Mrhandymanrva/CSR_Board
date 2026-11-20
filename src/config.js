@@ -79,6 +79,89 @@ export const cfg = {
   },
 };
 
+/* RingCentral extension → ServiceTitan employee id.
+   Used only to credit an inbound call to the person who actually talked,
+   when ServiceTitan stored no agent (accepted in RingCentral, no disposition).
+   These are extension numbers and employee ids, not secrets.
+   Another office replaces the whole map with RC_EXT_TO_EMPLOYEE_IDS
+   (`ext=stId,ext=stId`). Unset or blank keeps this default. A non-empty
+   value does not merge — extensions left out of the override are unmapped. */
+export const DEFAULT_RC_EXT_TO_EMPLOYEE = Object.freeze({
+  '109': 258517659, // Briana Logan
+  '103': 200002561, // Cherie / Cheri McKesson
+  '110': 316690094, // Kris Ranario
+  '107': 311921192, // Rick.J / Rick Jones
+  '105': 310014743, // Tanisha / Tanisha Kane
+  '108': 231746536, // TiffanyJ / Tiffany Jones
+  '102': 223117800, // AmyW / Amy Williams
+  '104': 280123806, // CarliH / Carli Hagenbuch — Dispatch
+  '114': 351468985, // Paul Maskarino — Dispatch, Client Coordinator
+  '113': 322116688, // Claire Yu
+  '115': 322135443, // Ivie Villagracia
+  '111': 316508824, // Lyra Montano
+  // Extension 116 is Wes Moore in RingCentral (extension id 2931152027),
+  // not a second Claire Yu line. It is left unmapped.
+});
+
+export function rcExtToEmployeeMap() {
+  const raw = process.env.RC_EXT_TO_EMPLOYEE_IDS;
+  if (raw == null || raw.trim() === '') return { ...DEFAULT_RC_EXT_TO_EMPLOYEE };
+  const map = {};
+  for (const part of raw.split(',')) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    const ext = part.slice(0, eq).trim();
+    const id = Number(part.slice(eq + 1).trim());
+    if (!ext || !Number.isFinite(id)) continue;
+    map[ext] = id;
+  }
+  return map;
+}
+
+/** ServiceTitan employee id for a RingCentral extension, or null if unmapped. */
+export function rcExtensionEmployeeId(ext) {
+  if (ext == null || String(ext).trim() === '') return null;
+  const id = rcExtToEmployeeMap()[String(ext).trim()];
+  return id == null ? null : id;
+}
+
+/* Client coordinators share one People row: Claire, Ivie, and Paul.
+   Lyra is not part of the sales call flow; she is on the Other staff row.
+   CC_COORDINATOR_EMPLOYEE_IDS replaces the whole list when set
+   (comma-separated employee ids). Unset or blank keeps this default. */
+export const DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS = Object.freeze([
+  322116688, // Claire Yu — ext 113
+  322135443, // Ivie Villagracia — ext 115
+  351468985, // Paul Maskarino — ext 114
+]);
+
+export function ccCoordinatorEmployeeIds() {
+  return idList(process.env.CC_COORDINATOR_EMPLOYEE_IDS, DEFAULT_CC_COORDINATOR_EMPLOYEE_IDS);
+}
+
+/* Mapped people who are not CSRs and not coordinators. One People row.
+   Lyra was taken off the coordinator row. Amy and Carli are dispatch, not
+   the sales line. OTHER_STAFF_EMPLOYEE_IDS replaces the whole list.
+   Unset or blank keeps this. */
+export const DEFAULT_OTHER_STAFF_EMPLOYEE_IDS = Object.freeze([
+  223117800, // Amy Williams — ext 102
+  280123806, // Carli Hagenbuch — ext 104
+  316508824, // Lyra Montano — ext 111
+]);
+
+export function otherStaffEmployeeIds() {
+  return idList(process.env.OTHER_STAFF_EMPLOYEE_IDS, DEFAULT_OTHER_STAFF_EMPLOYEE_IDS);
+}
+
+function idList(raw, fallback) {
+  if (raw == null || raw.trim() === '') return [...fallback];
+  return raw.split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((n) => Number.isFinite(n));
+}
+
 /* ── Timezone-correct day boundaries ───────────────────────────────
    ServiceTitan stores timestamps in UTC. "Today" must mean today in
    America/New_York or the board rolls over at 8pm during EDT.
