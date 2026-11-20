@@ -1,7 +1,10 @@
-import { cfg } from '../config.js';
+import { cfg, rcExtensionEmployeeId } from '../config.js';
 import { CALL, CALL_TYPE } from '../st/endpoints.js';
 import { externalPhone, farPartyExternal } from './phone.js';
-import { bookedBy, bookedToday, initials, isAnswered, isCancelled, isEstimate, isInbound } from './rules.js';
+import {
+  bookedBy, bookedToday, inBusinessHours, initials, isAnswered, isCancelled,
+  isEstimate, isInbound, isMissed,
+} from './rules.js';
 
 /**
  * Lead episodes — Command Center's rules (server/data/leads.ts).
@@ -189,28 +192,80 @@ function callDirection(call) {
 
 /**
  * Who the call counts for on the People table.
- * Inbound is the ServiceTitan agent (`leadCall.agent`), the same person
- * `handledBy` uses for "Calls in hours" / "Reached a person". There is no
- * RingCentral extension-to-employee map on this board; an answered call with
- * no agent is not credited.
- * Outbound is that agent when ServiceTitan set one, otherwise `createdBy`,
- * which is the field ServiceTitan fills on outbound (same join as demand.js).
+ * Inbound prefers the RingCentral talker (`call._rc.talkerExt`), the longest
+ * user leg on the log the poller already joined. That extension maps to a
+ * ServiceTitan employee. An extension that is not in the map is not a person
+ * we can name, so the call falls back to `leadCall.agent` — the same fallback
+ * as when no talker leg qualified. Outbound stays the ServiceTitan agent when
+ * one is set, otherwise `createdBy` (the field ServiceTitan fills on outbound).
  */
 function volumeAgentId(call) {
+  if (isInbound(call)) {
+    const ext = call?._rc?.talkerExt;
+    if (ext != null && String(ext).trim() !== '') {
+      const mapped = numId(rcExtensionEmployeeId(ext));
+      if (mapped != null) return mapped;
+    }
+    return numId(CALL.agentId(call));
+  }
   const agent = numId(CALL.agentId(call));
   if (agent != null) return agent;
-  if (isInbound(call)) return null;
   return numId(CALL.inner(call).createdBy?.id ?? null);
+}
+
+/**
+ * In-hours inbound, split so the header adds up.
+ * team answered + answered by others + missed = every in-hours inbound row.
+ *
+ * Team answered is the part the people table would credit to someone on the
+ * displayed roster (CSR_EMPLOYEE_IDS minus hidden). The people column itself
+ * is the whole local day, so after hours it can run ahead of this figure.
+ * Answered by others is everyone else who is not a miss: off-roster and
+ * hidden employees, a call with nobody to credit, a forward to Broadly, and
+ * an in-hours extension-to-extension call. That residual is what makes the
+ * three numbers equal the in-hours total.
+ */
+export function splitInboundHours(calls, { csrIds = null, hideIds = null } = {}) {
+  const want = (csrIds ?? cfg.rules.csrEmployeeIds).map(numId).filter((id) => id != null);
+  const hide = new Set(
+    (hideIds ?? cfg.rules.csrHideEmployeeIds).map(numId).filter((id) => id != null),
+  );
+  const displayed = (id) => {
+    if (id == null) return false;
+    if (hide.has(id)) return false;
+    if (want.length && !want.includes(id)) return false;
+    return true;
+  };
+
+  let total = 0;
+  let teamAnswered = 0;
+  let answeredByOthers = 0;
+  let missed = 0;
+  for (const call of calls ?? []) {
+    if (!isInbound(call) || !inBusinessHours(call)) continue;
+    total++;
+    if (isMissed(call)) {
+      missed++;
+      continue;
+    }
+    const id = isAnswered(call) && farPartyExternal(call) ? volumeAgentId(call) : null;
+    if (displayed(id)) teamAnswered++;
+    else answeredByOthers++;
+  }
+  return { total, teamAnswered, answeredByOthers, missed };
 }
 
 /**
  * Today's external phone calls for the People columns.
  * Inbound: answered (RingCentral Accepted when the log is joined, otherwise
- * an agent and a disposition other than Abandoned). Missed, voicemail, and
- * overflow that nobody here took are out.
+ * an agent and a disposition other than Abandoned), credited to the
+ * RingCentral talker when that extension is mapped, otherwise the
+ * ServiceTitan agent. Missed, voicemail, and overflow that nobody here took
+ * are out. A call with neither a mapped talker nor an agent is credited to
+ * nobody.
  * Outbound: every external call placed, connected or not.
  * Extension-to-extension calls are out of both. The window is the board's
- * local day, not the business-hours filter on the "Calls in hours" tile.
+ * local day, not the business-hours filter on the inbound-in-hours tile.
  */
 export function tallyCallVolume(calls, dayStart, dayEnd) {
   const inbound = new Map();

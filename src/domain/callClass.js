@@ -1,3 +1,4 @@
+import { rcExtensionEmployeeId } from '../config.js';
 import { CALL, CALL_TYPE } from '../st/endpoints.js';
 import { partyNumber } from './phone.js';
 
@@ -51,6 +52,82 @@ function hasInternalParty(leg) {
   return parties.some((p) => p && (p.extensionId || p.extensionNumber));
 }
 
+/** Dialable extension on a RingCentral party. Not `extension.id` — that is
+ *  RingCentral's own id, not the number and not a ServiceTitan employee. */
+function extensionNumberOf(party) {
+  if (!party || typeof party !== 'object') return null;
+  const n = party.extensionNumber;
+  if (n == null) return null;
+  const s = String(n).trim();
+  return s || null;
+}
+
+function legSeconds(leg) {
+  const ms = Number(leg?.durationMs);
+  if (Number.isFinite(ms) && ms > 0) return ms / 1000;
+  const s = Number(leg?.duration);
+  if (Number.isFinite(s) && s > 0) return s;
+  return 0;
+}
+
+/** The person who talked, not the queue that accepted the session. */
+function isTalkResult(result) {
+  const s = String(result ?? '').trim().toLowerCase();
+  return s === 'accepted' || s === 'call connected';
+}
+
+function isSystemLeg(leg) {
+  const text = [
+    leg?.action, leg?.legType, leg?.reason, leg?.reasonDescription,
+    leg?.to?.name, leg?.from?.name, leg?.extension?.name,
+  ].filter(Boolean).join(' ');
+  return /\b(queue|ivr|auto[- ]?attendant|voicemail|company greeting)\b/i.test(text);
+}
+
+/**
+ * Extension of the person who talked on the RingCentral sessions already
+ * matched to one ServiceTitan call.
+ *
+ * The longest user leg with result Accepted or "Call connected" and
+ * duration of at least 10 seconds. Overflow and forward-to-Broadly legs
+ * are out. So are queue, IVR, and voicemail legs — a queue session is
+ * often the longest leg because it spans the whole call, and it is not a
+ * person. A leg is treated as a queue/IVR/voicemail leg when its name or
+ * action says so. An unlabeled queue extension is still not a user: when
+ * any qualifying leg maps to an employee, extensions that are not in that
+ * map are dropped before the longest leg is chosen.
+ *
+ * Returns null when no leg qualifies. The caller then falls back to
+ * ServiceTitan's agent.
+ */
+export function talkingExtension(records, overflow) {
+  const candidates = [];
+  for (const rec of records ?? []) {
+    for (const leg of rec?.legs ?? []) {
+      if (!isTalkResult(leg?.result)) continue;
+      if (mentionsOverflow(leg, overflow)) continue;
+      if (isSystemLeg(leg)) continue;
+      const secs = legSeconds(leg);
+      if (secs < 10) continue;
+      const to = extensionNumberOf(leg?.to);
+      const from = extensionNumberOf(leg?.from);
+      const ext = to || from;
+      if (!ext) continue;
+      const start = Date.parse(leg?.startTime ?? rec?.startTime ?? '');
+      candidates.push({
+        ext,
+        secs,
+        start: Number.isFinite(start) ? start : 0,
+      });
+    }
+  }
+  if (!candidates.length) return null;
+  const mapped = candidates.filter((c) => rcExtensionEmployeeId(c.ext) != null);
+  const pool = mapped.length ? mapped : candidates;
+  pool.sort((a, b) => b.secs - a.secs || b.start - a.start || a.ext.localeCompare(b.ext));
+  return pool[0].ext;
+}
+
 /**
  * Collapse every RingCentral session that belongs to one ServiceTitan call.
  * A leg answered at the Broadly / Nonstop number is overflow, not a CSR answer —
@@ -77,7 +154,12 @@ export function summarizeRc(records, overflow) {
     else if (isAnsweredResult(rec?.result) && !recOverflow) accepted = true;
     if (recOverflow) broadly = true;
   }
-  return { accepted, broadly, unanswered };
+  return {
+    accepted,
+    broadly,
+    unanswered,
+    talkerExt: talkingExtension(records, overflow),
+  };
 }
 
 export function classifyCall(call, summary) {
@@ -101,5 +183,6 @@ export function classifyCall(call, summary) {
     broadly,
     answeredNoDisposition: isInbound(call) && answered && stAbandoned,
     matched,
+    talkerExt: summary?.talkerExt ?? null,
   };
 }

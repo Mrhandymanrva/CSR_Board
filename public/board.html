@@ -52,10 +52,10 @@
 
   .kpistrip{display:grid;grid-template-columns:repeat(6,1fr);gap:2px;background:var(--edge);
     border-bottom:1px solid var(--edge);flex:0 0 158px;position:relative;z-index:2}
-  .kpi{background:var(--panel);padding:18px 24px;position:relative;overflow:hidden}
-  .kpi .lbl{font-family:var(--cond);font-size:20px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2)}
-  .kpi .val{font-family:var(--cond);font-weight:700;font-size:66px;line-height:.95;margin-top:4px;font-variant-numeric:tabular-nums}
-  .kpi .sub{font-family:var(--cond);font-size:20px;color:var(--ink-3);letter-spacing:.05em;margin-top:5px}
+  .kpi{background:var(--panel);padding:12px 20px 10px;position:relative;overflow:hidden}
+  .kpi .lbl{font-family:var(--cond);font-size:18px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2)}
+  .kpi .val{font-family:var(--cond);font-weight:700;font-size:58px;line-height:.95;margin-top:2px;font-variant-numeric:tabular-nums}
+  .kpi .sub{font-family:var(--cond);font-size:17px;color:var(--ink-3);letter-spacing:.04em;margin-top:3px;line-height:1.15}
   .kpi.hero{background:linear-gradient(160deg,#24151A,#171B1F 60%)}
   .kpi.hero::after{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--red)}
   .up{color:var(--green)} .down{color:var(--red-hot)} .warn{color:var(--amber)}
@@ -70,8 +70,9 @@
   .ptitle .note{color:var(--ink-3);letter-spacing:.04em;text-transform:none;font-size:16px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-  /* People lead table: name + 9 metrics. Same panel width as before. */
-  .gridL{display:grid;grid-template-columns:minmax(148px,1.25fr) 70px 82px 58px 66px 108px 118px 76px 88px 70px;align-items:center;column-gap:3px}
+  /* People lead table: name + 9 metrics. Same panel width as before.
+     Leads and Booked are wide enough for the "not jobs" subhead. */
+  .gridL{display:grid;grid-template-columns:minmax(140px,1.2fr) 68px 78px 118px 108px 104px 112px 74px 86px 68px;align-items:center;column-gap:3px}
   .lbhead{font-family:var(--cond);font-size:15px;letter-spacing:.08em;text-transform:uppercase;
     color:var(--ink-3);padding:10px 0 8px;border-bottom:1px solid var(--edge);font-weight:500}
   .lbhead div:nth-child(n+2){text-align:center;line-height:1.15}
@@ -225,13 +226,13 @@
     <div class="col">
       <div class="panel" style="flex:1">
         <div class="ptitle">People <span class="rule"></span>
-          <span class="note" id="peopleNote">Leads are one per customer over 30 days, including a callback. Closing % is today and still settling. 30-day conversion is the trailing rate.</span></div>
+          <span class="note" id="peopleNote">Leads start from Booked or Unbooked calls only, one customer over 30 days. Booked is leads, not jobs. Closing % is still settling.</span></div>
         <div class="gridL lbhead">
           <div>CSR</div>
           <div>Inbound</div>
           <div>Outbound</div>
-          <div>Leads</div>
-          <div>Booked</div>
+          <div>Leads<span class="subh">booked or unbooked</span></div>
+          <div>Booked<span class="subh">leads, not jobs</span></div>
           <div>Closing %<span class="subh">today · settling</span></div>
           <div>30-day conv. %<span class="subh">trailing 30 days</span></div>
           <div>Unbooked</div>
@@ -322,9 +323,12 @@ function render(){
   if(document.title!==title) document.title=title;
   /* CALLS and JOBS are different measures and are never mixed. The booking
      rate is calls-to-calls (Booked / Booked+Unbooked); `booked` below counts
-     jobs created and carries no rate of its own. See domain/rules.js. */
+     jobs created and carries no rate of its own. See domain/rules.js.
+     The first tile is every in-hours inbound row. Team answered is the share
+     credited to the people on this board; it is not the tile total. */
   const callsOk=D.callsOk && D.callsHandled!=null;
   const calls=callsOk?D.callsHandled:'\u2014';
+  const splitOk=callsOk && D.teamAnswered!=null && D.answeredByOthers!=null && D.missedCalls!=null;
   /* Team total, not the visible rows. CSR_HIDE_EMPLOYEE_IDS stay in this
      number — net, work jobs, estimate share, the footer — and off the grid.
      Closing % and the 30-day total are the team row, from the same object. */
@@ -340,8 +344,11 @@ function render(){
 
   /* KPIs */
   $('kpis').innerHTML=[
-    {l:'Calls in hours',v:calls,
-      s:callsOk?'Avg call '+D.avgCall+' · '+D.afterHours+' after hours':'Telecom unavailable'},
+    {l:'Inbound calls (in hours)',v:calls,
+      s:!callsOk?'Telecom unavailable'
+        :(splitOk
+          ? D.teamAnswered+' team answered · '+D.answeredByOthers+' by others · '+D.missedCalls+' missed<br>Avg call '+D.avgCall+' · '+D.afterHours+' after hours'
+          : 'Avg call '+D.avgCall+' · '+D.afterHours+' after hours')},
     {l:'Reached a person',v:callsOk&&(reached+missed)?reachPct.toFixed(0)+'%':'—',
       s:reached+' of '+(reached+missed)+' callers · counted once each'},
     /* Hero. Missed calls are NOT lost — they hand off to text-back and a human
@@ -373,8 +380,8 @@ function render(){
      line from across the room. Do not re-sort here. The team row is not a CSR. */
   const note=$('peopleNote');
   if(note) note.textContent = D.leadsReady===false
-    ? 'Lead history is loading. Jobs booked are live.'
-    : 'Leads are one per customer over 30 days, including a callback. Closing % is today and still settling. 30-day conversion is the trailing rate.';
+    ? 'Lead history is loading. Jobs booked are live. Booked is leads, not jobs.'
+    : 'Leads start from Booked or Unbooked calls only, one customer over 30 days. Booked is leads, not jobs. Closing % is still settling.';
   const ranked=D.csrs||[];
   const rows=$('lbRows');
   rows.className = ranked.length>9 ? 'd2' : ranked.length>6 ? 'd1' : '';
@@ -470,7 +477,7 @@ function render(){
         <div><div class="nm">${esc(c.n)}</div><div class="nsub">First-call owner</div></div></div>
       <div class="cardbig">${dash(c.leads)}<small> leads</small></div>
       <div class="cardmeta">
-        <div class="cm"><div class="lbl">Booked</div><div class="v">${dash(c.bookedLeads)}</div></div>
+        <div class="cm"><div class="lbl">Booked leads</div><div class="v">${dash(c.bookedLeads)}</div></div>
         <div class="cm"><div class="lbl">Closing</div><div class="v">${c.closingPct==null?'\u2014':c.closingPct+'%'}</div></div>
         <div class="cm"><div class="lbl">Jobs</div><div class="v">${c.booked??0}</div></div>
         <div class="cm"><div class="lbl">Est.</div><div class="v" style="color:var(--ink-2)">${c.est??0}</div></div>
